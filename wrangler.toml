@@ -3,6 +3,13 @@ main = "src/worker.ts"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Serve on the *.workers.dev subdomain (the URL you share with colleagues).
+workers_dev = true
+
+# Skip per-version preview URLs — reduces the number of publicly-accessible URLs
+# pointing at the app. Only the main deployment URL is reachable.
+preview_urls = false
+
 # ────────────────────────────────────────────────────────────────
 # D1 (SQLite-compatible database)
 # Create with:  wrangler d1 create desk-time
