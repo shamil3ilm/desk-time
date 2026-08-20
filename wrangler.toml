@@ -1,0 +1,43 @@
+name = "desk-time"
+main = "src/worker.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ────────────────────────────────────────────────────────────────
+# D1 (SQLite-compatible database)
+# Create with:  wrangler d1 create desk-time
+# Then paste the returned database_id below.
+# ────────────────────────────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "desk-time"
+database_id = "TODO_RUN_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+# ────────────────────────────────────────────────────────────────
+# Cron Triggers — 2 max on free tier, plenty for our fan-out design.
+# Both hit /api/sync-all which iterates users and fans out per-user.
+# Times are UTC; adjust to your working hours.
+# 09:00–21:00 IST = 03:30–15:30 UTC (offset +5:30)
+# ────────────────────────────────────────────────────────────────
+[triggers]
+crons = [
+  "30 3-15 * * *",   # hourly during work hours (IST 09:00–21:00)
+  "0 18 * * *"       # day-end catch (IST 23:30)
+]
+
+# ────────────────────────────────────────────────────────────────
+# Secrets (set via `wrangler secret put NAME`):
+#   MASTER_KEY          base64 32-byte, encrypts HR passwords at rest
+#   SESSION_SECRET      HMAC key for signed session cookies
+#   TELEGRAM_BOT_TOKEN  optional, shared bot for alerts
+#
+# Public config:
+[vars]
+ATS_BASE_URL = "https://api.hr.zilmoney.com"
+APP_TZ_OFFSET = "+05:30"
+DAILY_TARGET_MINUTES = "480"
+WORKING_DAYS_PER_WEEK = "6"
+MONTHLY_CL_ALLOWANCE = "1"
+SESSION_ALERT_MINUTES = "240"
+SESSION_MAX_MINUTES = "270"

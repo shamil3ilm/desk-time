@@ -1,0 +1,22 @@
+{
+  "name": "desk-time",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared multi-tenant work-hours tracker for the Zil Money HR ATS. Runs on Cloudflare Workers + D1.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply desk-time --local",
+    "db:migrate:remote": "wrangler d1 migrations apply desk-time --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250801.0",
+    "typescript": "^5.6.2",
+    "wrangler": "^3.90.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
