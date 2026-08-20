@@ -1,0 +1,125 @@
+// Per-user poll orchestrator. Called from:
+//   - /api/sync route (user-triggered)
+//   - scheduled() cron handler (fan-out per active user via ctx.waitUntil)
+
+import type { AppConfig } from "../config.js";
+import { atsLogin, getCachedToken, saveCachedToken, invalidateCachedToken } from "./auth.js";
+import { fetchMyToday, triggerSync, waitForSyncIdle, UnauthorizedError, type MyTodayResponse } from "./api.js";
+import { findUserById } from "../db/users.js";
+import { persistToday, recordPoll, getLastSync } from "../db/sessions.js";
+import { decryptToString } from "../crypto/encrypt.js";
+import { todayISO, liveRunningMinutes } from "../report/dates.js";
+
+const MIN_SYNC_GAP_MS = 45 * 60_000; // 45 min between /my-sync per user, unless forceSync
+
+export interface PollOptions {
+  syncFirst?: boolean;
+  skipIfIdle?: boolean;
+  forceSync?: boolean;
+}
+
+export interface PollResult {
+  ok: boolean;
+  message: string;
+  sessions?: number;
+  workedMinutes?: number;
+  runningMinutes?: number;
+  status?: string;
+  synced: boolean;
+  skipped?: string;
+}
+
+async function getFreshToken(db: D1Database, config: AppConfig, userId: number): Promise<string> {
+  const cached = await getCachedToken(db, userId);
+  if (cached) return cached.token;
+  const user = await findUserById(db, userId);
+  if (!user) throw new Error(`user ${userId} not found`);
+  const password = await decryptToString(user.hr_password_encrypted, config.masterKey);
+  const login = await atsLogin(config.atsBaseUrl, user.email, password);
+  await saveCachedToken(db, userId, login.token, login.expiresAt);
+  return login.token;
+}
+
+async function withRetryOn401<T>(db: D1Database, userId: number, config: AppConfig, fn: (token: string) => Promise<T>): Promise<T> {
+  const token = await getFreshToken(db, config, userId);
+  try {
+    return await fn(token);
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      await invalidateCachedToken(db, userId);
+      const fresh = await getFreshToken(db, config, userId);
+      return fn(fresh);
+    }
+    throw err;
+  }
+}
+
+function minutesSinceLastSync(row: { ran_at: string } | null): number | null {
+  if (!row) return null;
+  const t = Date.parse(row.ran_at.replace(" ", "T") + "Z");
+  if (Number.isNaN(t)) return null;
+  return (Date.now() - t) / 60_000;
+}
+
+export async function runPoll(
+  db: D1Database,
+  config: AppConfig,
+  userId: number,
+  options: PollOptions = {},
+): Promise<PollResult> {
+  let syncFirst = options.syncFirst ?? true;
+  const skipIfIdle = options.skipIfIdle ?? false;
+  const forceSync = options.forceSync ?? false;
+  const date = todayISO(config.tzOffsetMin);
+
+  // Skip API entirely if the DB has no open session for today. Alerts-only path.
+  if (skipIfIdle && !syncFirst) {
+    const { getOpenSessionOnDate } = await import("../db/sessions.js");
+    const open = await getOpenSessionOnDate(db, userId, date);
+    if (!open) return { ok: true, message: "skipped — no open session", synced: false, skipped: "no open session" };
+  }
+
+  // Downgrade sync to fetch-only if a recent sync just happened.
+  if (syncFirst && !forceSync) {
+    const gap = minutesSinceLastSync(await getLastSync(db, userId));
+    if (gap !== null && gap * 60_000 < MIN_SYNC_GAP_MS) {
+      syncFirst = false;
+    }
+  }
+
+  try {
+    if (syncFirst) {
+      try {
+        await withRetryOn401(db, userId, config, (t) => triggerSync(config.atsBaseUrl, t, date, date));
+        await withRetryOn401(db, userId, config, (t) => waitForSyncIdle(config.atsBaseUrl, t, date, { pollIntervalMs: 500, timeoutMs: 8000 }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/already in progress/i.test(msg)) {
+          await withRetryOn401(db, userId, config, (t) => waitForSyncIdle(config.atsBaseUrl, t, date, { pollIntervalMs: 500, timeoutMs: 8000 }));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const today: MyTodayResponse = await withRetryOn401(db, userId, config, (t) => fetchMyToday(config.atsBaseUrl, t));
+    const count = await persistToday(db, userId, today, date);
+    await recordPoll(db, userId, "ok", count, null, syncFirst);
+
+    const running = liveRunningMinutes(today.current_session?.punch_in);
+    const workedLive = today.total_today_minutes + running;
+    return {
+      ok: true,
+      message: syncFirst ? "sync + fetch complete" : "fetch complete (no sync)",
+      sessions: count,
+      workedMinutes: workedLive,
+      runningMinutes: running,
+      status: today.status,
+      synced: syncFirst,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await recordPoll(db, userId, "error", null, msg, syncFirst).catch(() => {});
+    return { ok: false, message: msg, synced: syncFirst };
+  }
+}
