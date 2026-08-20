@@ -1,8 +1,10 @@
 # desk-time
 
-Shared multi-tenant work-hours tracker for the Zil Money HR ATS. One Cloudflare Worker + D1 database serves ~10 colleagues. Each user signs up, HR password encrypted at rest, dashboard at `https://desk-time.<subdomain>.workers.dev/`.
+Shared multi-tenant work-hours tracker for the Zil Money HR ATS. One Cloudflare Worker + D1 database serves colleagues. Each user signs up, HR password encrypted at rest.
 
-**Status: scaffold (Phase 1 of 6).** Not yet deployed. See `docs/DESIGN.md` for the full plan.
+**Deployed:** [https://desk-time.letmeknow.workers.dev/](https://desk-time.letmeknow.workers.dev/)
+
+**Status: Phase 2b live** — signup/login, full dashboard (KPIs, Sessions, Week, Month with pace, leave/punch widgets), per-user Sync + Refresh, per-user cron fan-out. See `docs/DESIGN.md` for the full plan.
 
 Local Windows-tracker (personal, per-machine) lives at [shamil3ilm/time](https://github.com/shamil3ilm/time). This repo is the always-on shared version.
 

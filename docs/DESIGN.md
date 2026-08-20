@@ -382,7 +382,7 @@ Ship in slices so I don't build 30 hours in the dark:
 
 ## Open decisions before I start
 
-1. **App URL**: `time.shamil3ilm.workers.dev` (default free) or custom domain? Custom is optional and free with Cloudflare.
+1. **App URL**: currently `desk-time.letmeknow.workers.dev` (free workers.dev subdomain). Custom domain optional and free with Cloudflare.
 2. **Telegram bot name**: needs to be globally unique, e.g. `@zil_time_bot`. You create it.
 3. **What happens when a user leaves the company**: mark inactive? delete? (soft delete + hard-delete-after-90-days is safe default)
 4. **Admin access**: do you want a `/admin` page (users list, force sync a user, view logs) or is CLI-only via `wrangler d1 execute` enough? Admin page adds ~4h.
