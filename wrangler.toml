@@ -11,7 +11,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "desk-time"
-database_id = "TODO_RUN_WRANGLER_D1_CREATE"
+database_id = "cf331122-9e59-47d1-b2f9-a30d5383d3d5"
 migrations_dir = "migrations"
 
 # ────────────────────────────────────────────────────────────────
