@@ -1,11 +1,11 @@
 import type { Env } from "../worker.js";
 import { getConfig } from "../config.js";
-import { atsLogin } from "../ats/auth.js";
+import { atsLogin, saveCachedToken } from "../ats/auth.js";
 import { encryptString } from "../crypto/encrypt.js";
 import { createUser, findUserByEmail, updateUserPassword } from "../db/users.js";
 import { createAppSession } from "../db/app-sessions.js";
-import { saveCachedToken } from "../ats/auth.js";
 import { makeSessionSetCookie } from "../crypto/cookie.js";
+import { runPoll } from "../ats/poll.js";
 import { formPage, redirect } from "./_html.js";
 
 export function signupPage(): Response {
@@ -66,6 +66,12 @@ export async function signupSubmit(req: Request, env: Env): Promise<Response> {
   // 3. Cache JWT + create app session
   await saveCachedToken(env.DB, userId, login.token, login.expiresAt);
   const session = await createAppSession(env.DB, userId);
+
+  // 4. Seed the dashboard with a full sync so the first render isn't empty.
+  //    Errors are swallowed — user is signed in, they can Sync now if this failed.
+  await runPoll(env.DB, config, userId, { syncFirst: true, forceSync: true }).catch((err) => {
+    console.error(`initial sync for user ${userId} failed:`, err instanceof Error ? err.message : String(err));
+  });
 
   return redirect("/", makeSessionSetCookie(session.id, session.expiresAt));
 }
