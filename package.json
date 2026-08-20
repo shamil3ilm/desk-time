@@ -12,9 +12,9 @@
     "db:migrate:remote": "wrangler d1 migrations apply desk-time --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250801.0",
+    "@cloudflare/workers-types": "^5.20260815.1",
     "typescript": "^5.6.2",
-    "wrangler": "^3.90.0"
+    "wrangler": "^4.0.0"
   },
   "engines": {
     "node": ">=20"
