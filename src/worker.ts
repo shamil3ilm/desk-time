@@ -13,6 +13,9 @@ import { signupPage, signupSubmit } from "./routes/signup.js";
 import { loginPage, loginSubmit, logoutSubmit } from "./routes/login.js";
 import { dashboardPage } from "./routes/dashboard.js";
 import { apiSyncSubmit } from "./routes/api-sync.js";
+import { apiFetchSubmit } from "./routes/api-fetch.js";
+import { apiLeaveAdd, apiLeaveRemove } from "./routes/api-leave.js";
+import { apiPunchAdd } from "./routes/api-punch.js";
 import { redirect } from "./routes/_html.js";
 
 export interface Env {
@@ -76,6 +79,14 @@ export default {
           return dashboardPage(request, env, user);
         case "POST /api/sync":
           return apiSyncSubmit(request, env, user);
+        case "POST /api/fetch":
+          return apiFetchSubmit(request, env, user);
+        case "POST /api/leave/add":
+          return apiLeaveAdd(request, env, user);
+        case "POST /api/leave/remove":
+          return apiLeaveRemove(request, env, user);
+        case "POST /api/punch/add":
+          return apiPunchAdd(request, env, user);
       }
 
       return json({ ok: false, error: "not found", path: url.pathname }, 404);
