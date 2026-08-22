@@ -73,14 +73,64 @@ export function renderDashboardHtml(data: DashboardData): string {
     --shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
 
-  * { box-sizing: border-box; }
+  /* ─────── Global reset — kill all browser defaults ─────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     font: 14px/1.5 var(--font); margin: 0; padding: 0;
     background: var(--bg); color: var(--fg);
-    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   }
   b { font-weight: 600; }
   a { color: inherit; text-decoration: none; }
+
+  /* All form controls inherit typography; strip OS chrome */
+  button, input, select, textarea {
+    font: inherit; color: inherit; margin: 0;
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background: transparent; border: 0; outline: 0; border-radius: 0;
+    box-shadow: none;
+  }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  input, select, textarea { min-width: 0; }
+  textarea { resize: vertical; }
+  /* Hide the OS number-input spinners */
+  input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  /* Date/time picker indicator — recolored per theme */
+  input[type=date]::-webkit-calendar-picker-indicator,
+  input[type=time]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5); opacity: 0.6; cursor: pointer; padding: 2px; transition: var(--transition);
+  }
+  input[type=date]:hover::-webkit-calendar-picker-indicator,
+  input[type=time]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+  :root[data-theme="dark"] input[type=date]::-webkit-calendar-picker-indicator,
+  :root[data-theme="dark"] input[type=time]::-webkit-calendar-picker-indicator { filter: invert(1) brightness(0.85); }
+  /* Placeholder */
+  ::placeholder { color: var(--fg-subtle); opacity: 1; }
+  /* Selection */
+  ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--fg); }
+  /* Visible-only focus ring, themed */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius-sm); }
+  button:focus-visible, .btn:focus-visible, .nav-item:focus-visible { outline-offset: 2px; }
+  /* Details marker (Chrome, Firefox, Safari) */
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::marker { display: none; content: ""; }
+
+  /* Custom scrollbars — WebKit + Firefox */
+  * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* Utility classes */
+  .muted { color: var(--fg-muted); }
+  .subtle { color: var(--fg-subtle); }
+  [hidden] { display: none !important; }
 
   /* App layout — sidebar + content */
   .app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 56px 1fr; grid-template-areas: "brand topbar" "sidebar content"; min-height: 100vh; }
@@ -102,18 +152,21 @@ export function renderDashboardHtml(data: DashboardData): string {
 
   /* Topbar buttons */
   .btn {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     height: 32px; padding: 0 12px;
     background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); font: inherit; font-size: 12px; font-weight: 500;
-    cursor: pointer; transition: var(--transition);
+    border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;
+    transition: var(--transition); white-space: nowrap; user-select: none;
   }
   .btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-strong); }
-  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn.primary { background: var(--pos-bg); color: var(--pos); border-color: var(--pos-border); }
-  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
-  .btn.icon { width: 32px; padding: 0; justify-content: center; font-size: 14px; }
-  .btn.ghost { background: transparent; }
+  .btn:active:not(:disabled) { transform: translateY(0.5px); }
+  .btn:disabled { opacity: 0.45; }
+  .btn.primary { background: var(--accent); color: var(--bg-elev); border-color: var(--accent); }
+  .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
+  :root[data-theme="light"] .btn.primary { color: #fff; }
+  .btn.icon { width: 32px; padding: 0; font-size: 14px; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--fg-muted); }
+  .btn.ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: transparent; color: var(--fg); }
   .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
 
   .user-chip { display: flex; align-items: center; gap: 8px; padding: 0 8px; color: var(--fg-muted); font-size: 12px; }
@@ -153,16 +206,24 @@ export function renderDashboardHtml(data: DashboardData): string {
   .nav { display: flex; align-items: center; gap: 4px; font-size: 12px; }
   .nav button, .nav select, .nav input {
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    height: 28px; border-radius: var(--radius-sm); cursor: pointer; font: inherit; padding: 0 10px; outline: none; transition: var(--transition);
+    height: 28px; border-radius: var(--radius-sm); padding: 0 10px;
+    transition: var(--transition);
   }
-  .nav button { width: 28px; padding: 0; line-height: 1; color: var(--fg-muted); }
+  .nav button { width: 28px; padding: 0; line-height: 1; color: var(--fg-muted); display: inline-flex; align-items: center; justify-content: center; }
   .nav button:hover:not(:disabled), .nav select:hover, .nav input:hover { border-color: var(--border-strong); color: var(--fg); }
-  .nav select:focus, .nav input:focus { border-color: var(--accent); }
-  .nav button:disabled { opacity: 0.35; cursor: default; }
+  .nav select:focus-visible, .nav input:focus-visible { border-color: var(--accent); outline: 0; }
+  .nav button:disabled { opacity: 0.35; }
   .nav .today-btn { padding: 0 12px; color: var(--fg-muted); width: auto; background: transparent; border-color: transparent; }
   .nav .today-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--border); background: var(--bg-hover); }
-  .nav input[type=date] { color-scheme: light dark; }
-  .nav select { appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='%237d8592'><path d='M0 0l5 6 5-6z'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; background-size: 8px; }
+  /* Themed dropdown arrow — CSS mask so it inherits currentColor */
+  .nav select, .fb-row select {
+    padding-right: 26px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path fill='%237d8592' d='M0 0l5 6 5-6z'/></svg>");
+    background-repeat: no-repeat; background-position: right 9px center; background-size: 9px;
+  }
+  :root[data-theme="light"] .nav select, :root[data-theme="light"] .fb-row select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path fill='%2352525b' d='M0 0l5 6 5-6z'/></svg>");
+  }
 
   /* Summary line inside a card */
   .summary { color: var(--fg); font-size: 12px; margin: 8px 0 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
@@ -223,19 +284,17 @@ export function renderDashboardHtml(data: DashboardData): string {
 
   /* Collapsible forms (leave, punch) */
   .form-block { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
-  .form-block summary { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); font-size: 12px; font-weight: 500; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; user-select: none; list-style: none; }
-  .form-block summary::-webkit-details-marker { display: none; }
+  .form-block summary { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); font-size: 12px; font-weight: 500; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; user-select: none; transition: var(--transition); }
   .form-block summary::before { content: "+"; color: var(--fg-muted); font-weight: 400; font-size: 14px; line-height: 1; }
   .form-block summary:hover { border-color: var(--border-strong); background: var(--bg-hover); }
   .form-block[open] summary::before { content: "−"; }
   .fb-body { margin-top: 12px; }
   .fb-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
   .fb-row label { color: var(--fg-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
-  .fb-row input, .fb-row select { background: var(--bg); color: var(--fg); border: 1px solid var(--border); height: 30px; padding: 0 10px; border-radius: var(--radius-sm); font: inherit; outline: none; transition: var(--transition); }
-  .fb-row input:hover, .fb-row select:hover, .fb-row input:focus, .fb-row select:focus { border-color: var(--border-strong); }
+  .fb-row input, .fb-row select { background: var(--bg); color: var(--fg); border: 1px solid var(--border); height: 30px; padding: 0 10px; border-radius: var(--radius-sm); transition: var(--transition); }
+  .fb-row input:hover, .fb-row select:hover { border-color: var(--border-strong); }
+  .fb-row input:focus-visible, .fb-row select:focus-visible { border-color: var(--accent); outline: 0; }
   .fb-row input[type=text] { flex: 1; min-width: 140px; }
-  .fb-row input[type=date], .fb-row input[type=time] { color-scheme: light dark; }
-  .fb-row select { appearance: none; padding-right: 26px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='%237d8592'><path d='M0 0l5 6 5-6z'/></svg>"); background-repeat: no-repeat; background-position: right 10px center; background-size: 8px; }
   .fb-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .fb-hint { color: var(--fg-muted); font-size: 11px; margin-top: 6px; }
 
