@@ -16,6 +16,7 @@ import { apiSyncSubmit } from "./routes/api-sync.js";
 import { apiFetchSubmit } from "./routes/api-fetch.js";
 import { apiLeaveAdd, apiLeaveRemove } from "./routes/api-leave.js";
 import { apiPunchAdd } from "./routes/api-punch.js";
+import { internalSync } from "./routes/internal-sync.js";
 import { redirect } from "./routes/_html.js";
 
 export interface Env {
@@ -23,6 +24,8 @@ export interface Env {
   MASTER_KEY?: string;
   SESSION_SECRET?: string;
   TELEGRAM_BOT_TOKEN?: string;
+  INTERNAL_SYNC_SECRET?: string;
+  APP_URL?: string;
   ATS_BASE_URL: string;
   APP_TZ_OFFSET: string;
   DAILY_TARGET_MINUTES: string;
@@ -68,6 +71,9 @@ export default {
           return loginSubmit(request, env);
         case "POST /logout":
           return logoutSubmit(request, env);
+        case "POST /internal/sync-user":
+          // Auth via X-Internal-Secret header; called by scheduled() fan-out.
+          return internalSync(request, env);
       }
 
       // Authenticated routes ──────────────────────────────────────
@@ -97,15 +103,42 @@ export default {
     }
   },
 
-  // Cron Triggers — fan out per user, each syncUser runs in its own execution context.
+  // Cron Triggers — fan out to /internal/sync-user per user via self-fetch.
+  // Each self-fetch triggers a NEW Worker invocation with its own 50-subrequest budget,
+  // so one user's poll can't starve the others. Scales cleanly to ~48 users on free tier.
+  // For >48 users, migrate to Cloudflare Queues.
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const config = getConfig(env);
     const userIds = await listActiveUserIds(env.DB);
     console.log(`cron fired — ${userIds.length} active users`);
+
+    const secret = env.INTERNAL_SYNC_SECRET;
+    const appUrl = env.APP_URL;
+
+    if (!secret || !appUrl) {
+      // Fallback for pre-configured deployments: run in-process (subrequest-limited to ~7 users).
+      console.warn("INTERNAL_SYNC_SECRET or APP_URL not set — falling back to in-process poll (limited to ~7 users)");
+      const config = getConfig(env);
+      for (const userId of userIds) {
+        ctx.waitUntil(
+          runPoll(env.DB, config, userId, { syncFirst: true }).catch((err) =>
+            console.error(`cron in-process syncUser ${userId} failed:`, err instanceof Error ? err.message : String(err)),
+          ),
+        );
+      }
+      return;
+    }
+
     for (const userId of userIds) {
       ctx.waitUntil(
-        runPoll(env.DB, config, userId, { syncFirst: true }).catch((err) =>
-          console.error(`cron syncUser ${userId} failed:`, err instanceof Error ? err.message : String(err)),
+        fetch(`${appUrl.replace(/\/$/, "")}/internal/sync-user`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-internal-secret": secret,
+          },
+          body: JSON.stringify({ user_id: userId }),
+        }).catch((err) =>
+          console.error(`cron fan-out to user ${userId} failed:`, err instanceof Error ? err.message : String(err)),
         ),
       );
     }

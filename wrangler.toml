@@ -35,9 +35,10 @@ crons = [
 
 # ────────────────────────────────────────────────────────────────
 # Secrets (set via `wrangler secret put NAME`):
-#   MASTER_KEY          base64 32-byte, encrypts HR passwords at rest
-#   SESSION_SECRET      HMAC key for signed session cookies
-#   TELEGRAM_BOT_TOKEN  optional, shared bot for alerts
+#   MASTER_KEY            base64 32-byte, encrypts HR passwords at rest
+#   SESSION_SECRET        HMAC key for signed session cookies
+#   INTERNAL_SYNC_SECRET  random string; auth for /internal/sync-user fan-out
+#   TELEGRAM_BOT_TOKEN    optional, shared bot for alerts
 #
 # Public config:
 [vars]
@@ -48,3 +49,4 @@ WORKING_DAYS_PER_WEEK = "6"
 MONTHLY_CL_ALLOWANCE = "1"
 SESSION_ALERT_MINUTES = "240"
 SESSION_MAX_MINUTES = "270"
+APP_URL = "https://desk-time.letmeknow.workers.dev"
