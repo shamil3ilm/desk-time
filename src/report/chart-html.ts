@@ -87,6 +87,52 @@ export function renderDashboardHtml(data: DashboardData): string {
   .foot a { color: #6b7385; text-decoration: none; margin-left: 12px; }
   .foot a:hover { color: #b7becb; }
 
+  /* Timeline */
+  .timeline-wrap { margin: 16px 0 4px; }
+  .timeline-axis { position: relative; height: 14px; color: #4b5568; font-size: 10px; font-variant-numeric: tabular-nums; }
+  .timeline-axis span { position: absolute; transform: translateX(-50%); }
+  .timeline {
+    position: relative; height: 24px; background: #0e1015; border-radius: 4px;
+    border: 1px solid #1c2029; overflow: hidden;
+  }
+  .timeline-bar {
+    position: absolute; top: 0; bottom: 0; min-width: 2px;
+    background: #60a5fa; opacity: 0.9;
+    border-right: 1px solid #171a22;
+  }
+  .timeline-bar.open { background: #fbbf24; }
+  .timeline-bar.break { background: rgba(107, 115, 133, 0.4); border: 0; }
+  .timeline-now {
+    position: absolute; top: -3px; bottom: -3px; width: 2px; background: #f87171;
+    box-shadow: 0 0 4px rgba(248, 113, 113, 0.6);
+  }
+  .timeline-legend {
+    display: flex; gap: 14px; margin-top: 6px;
+    color: #6b7385; font-size: 11px; align-items: center;
+  }
+  .timeline-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .timeline-legend i.tl-work { background: #60a5fa; }
+  .timeline-legend i.tl-open { background: #fbbf24; }
+  .timeline-legend i.tl-break { background: rgba(107, 115, 133, 0.4); }
+
+  /* Heatmap */
+  .heatmap { display: grid; grid-template-columns: 26px repeat(7, 1fr); gap: 4px; margin-top: 4px; }
+  .heatmap .dow-label, .heatmap .week-label { color: #4b5568; font-size: 10px; text-align: center; padding: 2px 0; font-variant-numeric: tabular-nums; }
+  .heatmap .dow-label { align-self: end; }
+  .heatmap .cell {
+    aspect-ratio: 1; border-radius: 3px; background: #171a22;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #4b5568; font-variant-numeric: tabular-nums;
+    cursor: pointer; transition: transform 80ms;
+  }
+  .heatmap .cell:hover { transform: scale(1.15); outline: 1px solid #3a4358; }
+  .heatmap .cell.outside { background: transparent; cursor: default; color: transparent; }
+  .heatmap .cell.outside:hover { transform: none; outline: 0; }
+  .heatmap .cell.today { outline: 2px solid #fbbf24; }
+  .heatmap-legend { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #6b7385; font-size: 11px; }
+  .heatmap-legend .swatches { display: flex; gap: 3px; }
+  .heatmap-legend .swatches i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
+
   .leave-form { margin-top: 14px; border-top: 1px solid #1c2029; padding-top: 12px; }
   .leave-form summary {
     display: inline-flex; align-items: center; gap: 6px;
@@ -147,6 +193,20 @@ export function renderDashboardHtml(data: DashboardData): string {
     </div>
     <div class="summary" id="sSummary"></div>
     <table id="sTable"><thead><tr><th>#</th><th>In</th><th>Out</th><th>Duration</th></tr></thead><tbody></tbody></table>
+
+    <div class="timeline-wrap">
+      <div class="timeline-axis">
+        <span style="left:0%">0</span><span style="left:12.5%">3</span><span style="left:25%">6</span>
+        <span style="left:37.5%">9</span><span style="left:50%">12</span><span style="left:62.5%">15</span>
+        <span style="left:75%">18</span><span style="left:87.5%">21</span><span style="left:100%">24</span>
+      </div>
+      <div class="timeline" id="timeline" title="Sessions on this day, laid out on a 24h timeline"></div>
+      <div class="timeline-legend">
+        <span><i class="tl-work"></i>work</span>
+        <span><i class="tl-open"></i>in progress</span>
+        <span><i class="tl-break"></i>break between sessions</span>
+      </div>
+    </div>
 
     <details class="leave-form">
       <summary>Missed a punch? Add it manually</summary>
@@ -227,6 +287,25 @@ export function renderDashboardHtml(data: DashboardData): string {
         </div>
       </div>
     </details>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div class="card-title"><h2>Heatmap</h2><span class="card-sub" id="hmLabel"></span></div>
+    </div>
+    <div class="heatmap" id="heatmap"></div>
+    <div class="heatmap-legend">
+      <span>less</span>
+      <div class="swatches">
+        <i style="background:#171a22"></i>
+        <i style="background:#1e3a2a"></i>
+        <i style="background:#265236"></i>
+        <i style="background:#357048"></i>
+        <i style="background:#4ade80"></i>
+      </div>
+      <span>more</span>
+      <span class="muted" style="margin-left:auto">amber outline = today · click a day to view its sessions</span>
+    </div>
   </div>
 
   <div class="foot" id="foot"><span id="footInfo"></span> <a href="/logout" onclick="event.preventDefault(); fetch('/logout',{method:'POST'}).then(()=>location.href='/login')">log out (${escapeHtml(data.userEmail)})</a></div>
@@ -473,6 +552,79 @@ function drillIntoWeek(wb) {
 // Sessions
 const dPicker = document.getElementById("dPicker");
 dPicker.value = D.today; dPicker.min = D.earliestDate; dPicker.max = D.today;
+// Compute total break minutes = sum of gaps between consecutive closed sessions on the same day.
+// Open sessions and their trailing gaps are ignored (no meaningful "break end" yet).
+function computeBreakMin(rows) {
+  if (!rows || rows.length < 2) return 0;
+  const sorted = [...rows].sort((a, b) => a.punch_in.localeCompare(b.punch_in));
+  let breakMin = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    if (!prev.punch_out) continue;
+    const gapMs = Date.parse(sorted[i].punch_in) - Date.parse(prev.punch_out);
+    if (gapMs > 0) breakMin += Math.round(gapMs / 60000);
+  }
+  return breakMin;
+}
+
+// Render the horizontal 24h timeline for the selected day: work bars for each session,
+// grey bars for gaps (breaks), a red vertical line for "now" if viewing today.
+function renderTimeline(date, rows) {
+  const el = document.getElementById("timeline");
+  if (!el) return;
+  el.innerHTML = "";
+  const isToday = date === D.today;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="timeline-bar break" style="left:0;width:100%" title="No sessions"></div>';
+    return;
+  }
+  const sorted = [...rows].sort((a, b) => a.punch_in.localeCompare(b.punch_in));
+  const dayStartMs = Date.parse(date + "T00:00:00" + tzOffsetFromISO(sorted[0].punch_in));
+  const dayLenMs = 24 * 60 * 60 * 1000;
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i];
+    const startMs = Date.parse(s.punch_in);
+    let endMs;
+    if (s.punch_out) {
+      endMs = Date.parse(s.punch_out);
+    } else if (isToday) {
+      endMs = Date.now();
+    } else {
+      // Historical open session (should be rare) — no known end, treat as 30 min minimum
+      endMs = startMs + 30 * 60000;
+    }
+    const leftPct = ((startMs - dayStartMs) / dayLenMs) * 100;
+    const widthPct = Math.max(0.3, ((endMs - startMs) / dayLenMs) * 100);
+    const cls = !s.punch_out && isToday ? "timeline-bar open" : "timeline-bar";
+    const inClock = s.punch_in.slice(11, 16);
+    const outClock = s.punch_out ? s.punch_out.slice(11, 16) : (isToday ? "now" : "?");
+    const dur = fmtHM(Math.round((endMs - startMs) / 60000));
+    el.innerHTML += '<div class="' + cls + '" style="left:' + leftPct.toFixed(2) + '%;width:' + widthPct.toFixed(2) + '%" title="' + inClock + ' → ' + outClock + ' · ' + dur + '"></div>';
+    // Add break bar for gap to the next session
+    if (i + 1 < sorted.length && s.punch_out) {
+      const gapStart = endMs;
+      const gapEnd = Date.parse(sorted[i + 1].punch_in);
+      if (gapEnd > gapStart) {
+        const gLeft = ((gapStart - dayStartMs) / dayLenMs) * 100;
+        const gWidth = ((gapEnd - gapStart) / dayLenMs) * 100;
+        const gDur = fmtHM(Math.round((gapEnd - gapStart) / 60000));
+        el.innerHTML += '<div class="timeline-bar break" style="left:' + gLeft.toFixed(2) + '%;width:' + gWidth.toFixed(2) + '%" title="break · ' + gDur + '"></div>';
+      }
+    }
+  }
+  if (isToday) {
+    const nowPct = ((Date.now() - dayStartMs) / dayLenMs) * 100;
+    if (nowPct > 0 && nowPct < 100) {
+      el.innerHTML += '<div class="timeline-now" style="left:' + nowPct.toFixed(2) + '%" title="now"></div>';
+    }
+  }
+}
+// Extract "+05:30"-shaped offset from a punch_in ISO. Falls back to +00:00 if malformed.
+function tzOffsetFromISO(iso) {
+  const m = /([+-]\d{2}:\d{2})$/.exec(iso);
+  return m ? m[1] : "+00:00";
+}
+
 function renderSessions() {
   const date = dPicker.value;
   const rows = (D.sessions.byDate[date] || []).slice();
@@ -497,22 +649,72 @@ function renderSessions() {
   }
   const target = dayIsSun ? 0 : (D.todayTargetHours * 60);
   const bal = total - target;
+  const breakMin = computeBreakMin(rows);
   const parts = [
     '<span><b>'+rows.length+'</b> session'+(rows.length===1?'':'s')+'</span>',
     '<span class="sep">·</span>',
     '<span>Worked <b>'+fmtHM(total)+'</b></span>',
   ];
+  if (breakMin > 0) parts.push('<span class="sep">·</span>', '<span class="muted">Break <b>'+fmtHM(breakMin)+'</b></span>');
   if (dayIsSun) parts.push('<span class="sep">·</span>', '<span class="muted">Sunday · no target</span>');
   else parts.push('<span class="sep">·</span>', '<span>Target <b>'+fmtHM(target)+'</b></span>', '<span class="sep">·</span>', '<span class="'+(bal>=0?"pos":"neg")+'">Balance <b>'+(bal>=0?"+":"")+fmtHM(bal)+'</b></span>');
   document.getElementById("sSummary").innerHTML = parts.join("");
+  renderTimeline(date, rows);
+}
+
+// Heatmap: grid, rows = weeks in current month, cols = Mon..Sun. Cell color scales with hours.
+function renderHeatmap() {
+  const el = document.getElementById("heatmap");
+  const m = currentMonth();
+  document.getElementById("hmLabel").textContent = m.label;
+  const targetHrs = D.todayTargetHours || 8;
+  // color scale: 0, <25%, 25-50%, 50-75%, 75%+
+  const colorFor = (h, isSun) => {
+    if (h <= 0) return isSun ? "#141821" : "#171a22";
+    const ratio = h / targetHrs;
+    if (ratio < 0.25) return "#1e3a2a";
+    if (ratio < 0.5)  return "#265236";
+    if (ratio < 0.75) return "#357048";
+    return "#4ade80";
+  };
+  // Build grid: header row + one row per week
+  const header = ['<div class="week-label"></div>', 'Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => i === 0 ? d : '<div class="dow-label">' + d + '</div>').join("");
+  const rows = [header];
+  for (const w of m.weeks) {
+    const cells = ['<div class="week-label">' + w.label.split('–')[0] + '</div>'];
+    // Reorder: w.days is chronological within the clipped week; pad Mon-Sun
+    const byDow = new Array(7).fill(null); // 0=Mon..6=Sun
+    for (const day of w.days) {
+      const dow = new Date(day.date + "T00:00:00").getDay(); // 0=Sun..6=Sat
+      const idx = dow === 0 ? 6 : dow - 1;
+      byDow[idx] = day;
+    }
+    for (let i = 0; i < 7; i++) {
+      const day = byDow[i];
+      if (!day) {
+        cells.push('<div class="cell outside"></div>');
+      } else {
+        const bg = colorFor(day.hours, day.isSunday);
+        const isTd = day.date === D.today ? " today" : "";
+        const label = day.date.slice(8);
+        const title = day.date + " · " + fmtHours(day.hours) + (day.isSunday ? " (Sun)" : "");
+        cells.push('<div class="cell' + isTd + '" data-date="' + day.date + '" style="background:' + bg + '" title="' + title + '">' + label + '</div>');
+      }
+    }
+    rows.push(cells.join(""));
+  }
+  el.innerHTML = rows.join("");
+  el.querySelectorAll(".cell[data-date]").forEach((cell) => {
+    cell.addEventListener("click", () => jumpSessionsTo(cell.getAttribute("data-date")));
+  });
 }
 
 // Nav wiring
 document.getElementById("wPrev").onclick = () => { if (weekIdx > 0) { weekIdx--; renderWeek(); } };
 document.getElementById("wNext").onclick = () => { if (weekIdx < D.weeks.length - 1) { weekIdx++; renderWeek(); } };
 document.getElementById("wToday").onclick = () => { weekIdx = D.weeks.length - 1; renderWeek(); };
-mSelect.onchange = renderMonth;
-document.getElementById("mToday").onclick = () => { mSelect.value = D.months[D.months.length - 1].key; renderMonth(); };
+mSelect.onchange = () => { renderMonth(); renderHeatmap(); };
+document.getElementById("mToday").onclick = () => { mSelect.value = D.months[D.months.length - 1].key; renderMonth(); renderHeatmap(); };
 document.getElementById("drillBack").onclick = () => { document.getElementById("monthDrill").hidden = true; document.getElementById("monthMain").hidden = false; };
 function shiftDay(days) {
   const d = new Date(dPicker.value+"T00:00:00"); d.setDate(d.getDate()+days);
@@ -560,7 +762,7 @@ document.getElementById("pfSave").onclick = async () => {
 };
 
 // Initial + tick
-renderKpis(); renderAlert(); renderWeek(); renderMonth(); renderSessions();
+renderKpis(); renderAlert(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap();
 setInterval(() => { renderKpis(); renderAlert(); if (dPicker.value === D.today) renderSessions(); }, 30_000);
 
 const footBits = ["Generated " + D.generatedAt];
