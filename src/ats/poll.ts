@@ -4,7 +4,7 @@
 
 import type { AppConfig } from "../config.js";
 import { atsLogin, getCachedToken, saveCachedToken, invalidateCachedToken } from "./auth.js";
-import { fetchMyToday, triggerSync, waitForSyncIdle, UnauthorizedError, type MyTodayResponse } from "./api.js";
+import { fetchMyToday, triggerSync, UnauthorizedError, type MyTodayResponse } from "./api.js";
 import { findUserById } from "../db/users.js";
 import { persistToday, recordPoll, getLastSync } from "../db/sessions.js";
 import { decryptToString } from "../crypto/encrypt.js";
@@ -40,26 +40,19 @@ async function getFreshToken(db: D1Database, config: AppConfig, userId: number):
   return login.token;
 }
 
-async function withRetryOn401<T>(db: D1Database, userId: number, config: AppConfig, fn: (token: string) => Promise<T>): Promise<T> {
-  const token = await getFreshToken(db, config, userId);
-  try {
-    return await fn(token);
-  } catch (err) {
-    if (err instanceof UnauthorizedError) {
-      await invalidateCachedToken(db, userId);
-      const fresh = await getFreshToken(db, config, userId);
-      return fn(fresh);
-    }
-    throw err;
-  }
-}
-
 function minutesSinceLastSync(row: { ran_at: string } | null): number | null {
   if (!row) return null;
   const t = Date.parse(row.ran_at.replace(" ", "T") + "Z");
   if (Number.isNaN(t)) return null;
   return (Date.now() - t) / 60_000;
 }
+
+// After POST /my-sync, the ATS runs the pull for a few seconds before /my-today reflects
+// the fresh state. On the local tool we polled /my-sync-status to time this precisely;
+// on Cloudflare Workers, doing that eats ~16 subrequests against the free-tier 50-per-invocation
+// limit and starves the rest of the poll. A blind 3s sleep is enough for the ATS in practice
+// and costs zero subrequests.
+const SYNC_SETTLE_MS = 3000;
 
 export async function runPoll(
   db: D1Database,
@@ -88,21 +81,34 @@ export async function runPoll(
   }
 
   try {
+    // Auth once per poll — every ATS call reuses this token, refreshed only on 401.
+    // This cuts D1 reads from 3× (one per withRetryOn401 call) to 1×.
+    let token = await getFreshToken(db, config, userId);
+    const call = async <T>(fn: (t: string) => Promise<T>): Promise<T> => {
+      try { return await fn(token); }
+      catch (err) {
+        if (err instanceof UnauthorizedError) {
+          await invalidateCachedToken(db, userId);
+          token = await getFreshToken(db, config, userId);
+          return fn(token);
+        }
+        throw err;
+      }
+    };
+
     if (syncFirst) {
       try {
-        await withRetryOn401(db, userId, config, (t) => triggerSync(config.atsBaseUrl, t, date, date));
-        await withRetryOn401(db, userId, config, (t) => waitForSyncIdle(config.atsBaseUrl, t, date, { pollIntervalMs: 500, timeoutMs: 8000 }));
+        await call((t) => triggerSync(config.atsBaseUrl, t, date, date));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/already in progress/i.test(msg)) {
-          await withRetryOn401(db, userId, config, (t) => waitForSyncIdle(config.atsBaseUrl, t, date, { pollIntervalMs: 500, timeoutMs: 8000 }));
-        } else {
-          throw err;
-        }
+        // "already in progress" from another concurrent sync — just wait for it too
+        if (!/already in progress/i.test(msg)) throw err;
       }
+      // Blind wait for the ATS to settle. No status polling — saves ~16 subrequests.
+      await new Promise((r) => setTimeout(r, SYNC_SETTLE_MS));
     }
 
-    const today: MyTodayResponse = await withRetryOn401(db, userId, config, (t) => fetchMyToday(config.atsBaseUrl, t));
+    const today: MyTodayResponse = await call((t) => fetchMyToday(config.atsBaseUrl, t));
     const count = await persistToday(db, userId, today, date);
     await recordPoll(db, userId, "ok", count, null, syncFirst);
 
