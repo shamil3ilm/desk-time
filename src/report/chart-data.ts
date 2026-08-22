@@ -35,6 +35,11 @@ export interface MonthPeriod {
   excusedByType: Record<string, string[]>;
   preEmploymentDays: number;
   partialDays: number; partialDates: string[];
+  // Hour banking within the month (monthly reset). Positive = surplus, negative = deficit.
+  // Formula: total_worked_minutes - (elapsed_workdays - excused_leaves) × dailyTarget
+  // Sunday hours count into "worked" with no counterpart in expected (so they add to surplus).
+  // Today's hours contribute to worked but not to expected until today itself is elapsed.
+  bankedMinutes: number;
   weeks: WeekBucket[];
 }
 export interface SessionRowLite {
@@ -211,6 +216,7 @@ async function buildMonths(
     let unexcusedLeaves = 0;
     let sundaysWorked = 0;
     let preEmploymentDays = 0;
+    let totalWorkedMin = 0; // for hours-banking calc
     const partialDates: string[] = [];
     const excusedDates: string[] = [];
     const unexcusedDates: string[] = [];
@@ -219,6 +225,7 @@ async function buildMonths(
       const workedMin = Math.round((dayHoursByDate.get(d) ?? 0) * 60);
       const beforeEmployment = d < employmentStart;
       const isTodayD = d === today;
+      if (!beforeEmployment) totalWorkedMin += workedMin; // includes Sundays + today live
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
@@ -258,6 +265,13 @@ async function buildMonths(
     const daysRemainingToTarget = Math.max(0, workingDays - preEmploymentDays - daysCompleted);
     const workingDaysLeftIncludingToday = isCurrent ? workingDaysBetween(today, end) : 0;
 
+    // Hour banking: what you owe or have banked, monthly reset.
+    // Expected = elapsed weekdays minus excused leaves (excused don't require hours).
+    // Today itself isn't in expected — it's still in progress, its target isn't due yet.
+    // Actual = every minute worked from employment start to today (Sundays count as bonus).
+    const expectedMin = Math.max(0, (daysElapsed - excusedLeaves)) * dailyTargetMin;
+    const bankedMinutes = totalWorkedMin - expectedMin;
+
     const excusedByType: Record<string, string[]> = {};
     for (const d2 of excusedDates) {
       const t = leaveTypeByDate.get(d2) ?? "leave";
@@ -271,6 +285,7 @@ async function buildMonths(
       excusedLeaves, unexcusedLeaves, sundaysWorked, excusedDates, unexcusedDates,
       excusedByType, preEmploymentDays,
       partialDays, partialDates,
+      bankedMinutes,
       weeks,
     });
   }
