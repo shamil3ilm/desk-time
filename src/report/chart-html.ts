@@ -133,6 +133,29 @@ export function renderDashboardHtml(data: DashboardData): string {
   .heatmap-legend .swatches { display: flex; gap: 3px; }
   .heatmap-legend .swatches i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; }
 
+  /* Cross-widget highlight */
+  .timeline-bar.highlight { outline: 2px solid #e8ecf1; outline-offset: -1px; z-index: 2; opacity: 1 !important; }
+  tr.highlight td { background: #1f2431; }
+
+  /* Toast notifications */
+  .toast-stack {
+    position: fixed; top: 20px; right: 20px; z-index: 1000;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
+  .toast {
+    background: #171a22; color: #e8ecf1; padding: 10px 14px;
+    border-radius: 6px; border: 1px solid #262c3b; font-size: 13px;
+    min-width: 200px; max-width: 380px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    animation: toast-in 180ms ease-out;
+    pointer-events: auto;
+  }
+  .toast.pos { border-color: #1f4a35; background: linear-gradient(180deg, #1b3a2a 0%, #171a22 100%); }
+  .toast.err { border-color: #7f1d1d; background: linear-gradient(180deg, #2a1013 0%, #171a22 100%); color: #fca5a5; }
+  .toast.info { border-color: #262c3b; }
+  .toast.fading { opacity: 0; transition: opacity 400ms; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
   .leave-form { margin-top: 14px; border-top: 1px solid #1c2029; padding-top: 12px; }
   .leave-form summary {
     display: inline-flex; align-items: center; gap: 6px;
@@ -176,6 +199,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     </div>
     <div class="sub" id="todaySub"></div>
   </header>
+
+  <div class="toast-stack" id="toasts"></div>
 
   <div id="alert" class="alert" hidden></div>
 
@@ -316,11 +341,36 @@ export function renderDashboardHtml(data: DashboardData): string {
 </div>
 
 <script>
-const D = ${JSON.stringify(data)};
+// D is 'let' so refresh() can replace it with fresh server data (no full page reload).
+let D = ${JSON.stringify(data)};
 async function callApi(path, body) {
   const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   return res.json().catch(() => ({ ok: false, error: "invalid JSON" }));
 }
+
+// Toast notifications — non-blocking, auto-dismissing floating messages.
+function toast(msg, kind = "info", ttlMs = 2500) {
+  const stack = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.textContent = msg;
+  stack.appendChild(el);
+  setTimeout(() => { el.classList.add("fading"); setTimeout(() => el.remove(), 420); }, ttlMs);
+}
+
+// Refresh dashboard data in place from /api/dashboard-data. Replaces D and re-renders every widget.
+// Called after any successful mutation (sync, punch, leave) so we don't need a full page reload.
+async function refresh() {
+  try {
+    const res = await fetch("/api/dashboard-data", { headers: { "accept": "application/json" }, cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    D = await res.json();
+    renderAll();
+  } catch (err) {
+    toast("Refresh failed: " + err.message, "err", 3500);
+  }
+}
+function renderAll() { renderKpis(); renderAlert(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 function fmtHours(h) { const s = h<0?"-":""; const a = Math.abs(h); const hh = Math.floor(a); const mm = Math.round((a-hh)*60); return s+hh+"h "+String(mm).padStart(2,"0")+"m"; }
 function fmtHM(m) { return fmtHours(m/60); }
 function fmtSigned(h) { return (h>=0?"+":"")+fmtHours(h); }
@@ -380,17 +430,27 @@ function renderAlert() {
   } else { el.hidden = true; }
 }
 
-// Sync/Refresh buttons
-async function runButton(btn, doingLabel, endpoint) {
+// Sync/Refresh buttons — toast + in-place refresh, no full reload.
+async function runButton(btn, doingLabel, endpoint, successMsg) {
   const original = btn.textContent; btn.disabled = true; btn.textContent = doingLabel;
   try {
     const r = await callApi(endpoint, null);
-    if (r.ok) { btn.textContent = "✓ Done — reloading"; btn.classList.add("copied"); setTimeout(() => location.reload(), 700); }
-    else { btn.textContent = "Failed — " + (r.error || "unknown"); setTimeout(() => { btn.textContent = original; btn.disabled = false; btn.classList.remove("copied"); }, 3000); }
-  } catch (err) { btn.textContent = "Failed — " + err.message; setTimeout(() => { btn.textContent = original; btn.disabled = false; btn.classList.remove("copied"); }, 3000); }
+    if (r.ok) {
+      const msg = successMsg + (r.sessions !== undefined ? " · " + r.sessions + " session" + (r.sessions === 1 ? "" : "s") : "");
+      toast(msg, "pos");
+      await refresh();
+      btn.textContent = original; btn.disabled = false;
+    } else {
+      toast("Failed: " + (r.error || "unknown"), "err", 3500);
+      btn.textContent = original; btn.disabled = false;
+    }
+  } catch (err) {
+    toast("Failed: " + err.message, "err", 3500);
+    btn.textContent = original; btn.disabled = false;
+  }
 }
-document.getElementById("syncNow").onclick = () => runButton(document.getElementById("syncNow"), "Syncing…", "/api/sync?force=1");
-document.getElementById("refreshNow").onclick = () => runButton(document.getElementById("refreshNow"), "Refreshing…", "/api/fetch");
+document.getElementById("syncNow").onclick = () => runButton(document.getElementById("syncNow"), "Syncing…", "/api/sync?force=1", "✓ Synced");
+document.getElementById("refreshNow").onclick = () => runButton(document.getElementById("refreshNow"), "Refreshing…", "/api/fetch", "✓ Refreshed");
 
 // Week card
 let weekIdx = D.weeks.length - 1;
@@ -603,7 +663,7 @@ function renderTimeline(date, rows) {
     const inClock = s.punch_in.slice(11, 16);
     const outClock = s.punch_out ? s.punch_out.slice(11, 16) : (isToday ? "now" : "?");
     const dur = fmtHM(Math.round((endMs - startMs) / 60000));
-    el.innerHTML += '<div class="' + cls + '" style="left:' + leftPct.toFixed(2) + '%;width:' + widthPct.toFixed(2) + '%" title="' + inClock + ' → ' + outClock + ' · ' + dur + '"></div>';
+    el.innerHTML += '<div class="' + cls + '" data-sidx="' + i + '" style="left:' + leftPct.toFixed(2) + '%;width:' + widthPct.toFixed(2) + '%" title="' + inClock + ' → ' + outClock + ' · ' + dur + '"></div>';
     // Add break bar for gap to the next session
     if (i + 1 < sorted.length && s.punch_out) {
       const gapStart = endMs;
@@ -622,6 +682,17 @@ function renderTimeline(date, rows) {
       el.innerHTML += '<div class="timeline-now" style="left:' + nowPct.toFixed(2) + '%" title="now"></div>';
     }
   }
+  // Cross-hover: hovering a timeline bar highlights the matching session row
+  el.querySelectorAll("[data-sidx]").forEach((bar) => {
+    bar.addEventListener("mouseenter", () => highlightSession(+bar.getAttribute("data-sidx"), true));
+    bar.addEventListener("mouseleave", () => highlightSession(+bar.getAttribute("data-sidx"), false));
+  });
+}
+
+// Toggle .highlight class on both the timeline bar and the table row for the given session index.
+function highlightSession(idx, on) {
+  document.querySelectorAll('#sTable tr[data-sidx="'+idx+'"]').forEach((el) => el.classList.toggle("highlight", on));
+  document.querySelectorAll('#timeline [data-sidx="'+idx+'"]').forEach((el) => el.classList.toggle("highlight", on));
 }
 // Extract "+05:30"-shaped offset from a punch_in ISO. Falls back to +00:00 if malformed.
 function tzOffsetFromISO(iso) {
@@ -648,8 +719,13 @@ function renderSessions() {
       const dur = s.duration_minutes !== null ? s.duration_minutes : live;
       total += dur;
       const durLabel = s.duration_minutes !== null ? fmtHM(dur) : fmtHM(live)+' <span class="muted">(open)</span>';
-      return '<tr'+(openRow?' class="open"':'')+'><td>'+(i+1)+'</td><td>'+clock(s.punch_in)+'</td><td>'+clock(s.punch_out)+'</td><td>'+durLabel+'</td></tr>';
+      return '<tr'+(openRow?' class="open"':'')+' data-sidx="'+i+'"><td>'+(i+1)+'</td><td>'+clock(s.punch_in)+'</td><td>'+clock(s.punch_out)+'</td><td>'+durLabel+'</td></tr>';
     }).join("");
+    // Cross-hover: hovering a session row highlights the matching timeline bar
+    document.querySelectorAll("#sTable tr[data-sidx]").forEach((tr) => {
+      tr.addEventListener("mouseenter", () => highlightSession(+tr.getAttribute("data-sidx"), true));
+      tr.addEventListener("mouseleave", () => highlightSession(+tr.getAttribute("data-sidx"), false));
+    });
   }
   const target = dayIsSun ? 0 : (D.todayTargetHours * 60);
   const bal = total - target;
@@ -749,15 +825,13 @@ const lfMsg = document.getElementById("lfMsg");
 lfDate.value = D.today; lfDate.min = D.earliestDate;
 document.getElementById("lfSaveAdd").onclick = async () => {
   const r = await callApi("/api/leave/add", { date: lfDate.value, type: lfType.value, reason: lfReason.value.trim() || undefined });
-  lfMsg.textContent = r.ok ? "✓ saved — reloading" : "failed: "+r.error;
-  if (r.ok) setTimeout(() => location.reload(), 700);
-  else setTimeout(() => lfMsg.textContent = "", 2500);
+  if (r.ok) { toast("✓ Leave saved for " + lfDate.value, "pos"); await refresh(); }
+  else toast("Failed: " + r.error, "err", 3500);
 };
 document.getElementById("lfSaveRemove").onclick = async () => {
   const r = await callApi("/api/leave/remove", { date: lfDate.value });
-  lfMsg.textContent = r.ok ? "✓ removed — reloading" : "failed: "+r.error;
-  if (r.ok) setTimeout(() => location.reload(), 700);
-  else setTimeout(() => lfMsg.textContent = "", 2500);
+  if (r.ok) { toast("✓ Leave removed for " + lfDate.value, "pos"); await refresh(); }
+  else toast("No leave for " + lfDate.value, "err", 3500);
 };
 
 // Punch form
@@ -767,22 +841,34 @@ const pfT2 = document.getElementById("pfT2");
 const pfMsg = document.getElementById("pfMsg");
 pfDate.value = D.today; pfDate.min = D.earliestDate; pfDate.max = D.today;
 document.getElementById("pfSave").onclick = async () => {
-  if (!pfT1.value && !pfT2.value) { pfMsg.textContent = "enter at least one time"; setTimeout(() => pfMsg.textContent = "", 2000); return; }
+  if (!pfT1.value && !pfT2.value) { toast("Enter at least one time", "err", 2000); return; }
   const times = [pfT1.value, pfT2.value].filter(Boolean).sort();
   const r = await callApi("/api/punch/add", { date: pfDate.value, from: times[0], to: times[1] });
-  pfMsg.textContent = r.ok ? "✓ added — reloading" : "failed: "+r.error;
-  if (r.ok) setTimeout(() => location.reload(), 700);
-  else setTimeout(() => pfMsg.textContent = "", 2500);
+  if (r.ok) { toast("✓ Punch saved · " + times[0] + (times[1] ? " → " + times[1] : " (open)"), "pos"); pfT1.value = ""; pfT2.value = ""; await refresh(); }
+  else toast("Failed: " + r.error, "err", 3500);
 };
 
 // Initial + tick
-renderKpis(); renderAlert(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap();
-setInterval(() => { renderKpis(); renderAlert(); if (dPicker.value === D.today) renderSessions(); }, 30_000);
+function renderFooter() {
+  const bits = ["Generated " + D.generatedAt];
+  if (D.lastPoll) bits.push("last fetch " + D.lastPoll.ran_at + " (" + D.lastPoll.status + ")");
+  if (D.lastSync) bits.push("last sync " + D.lastSync.ran_at);
+  document.getElementById("footInfo").textContent = bits.join(" · ");
+}
 
-const footBits = ["Generated " + D.generatedAt];
-if (D.lastPoll) footBits.push("last fetch " + D.lastPoll.ran_at + " (" + D.lastPoll.status + ")");
-if (D.lastSync) footBits.push("last sync " + D.lastSync.ran_at);
-document.getElementById("footInfo").textContent = footBits.join(" · ");
+renderAll();
+
+// Live-tick: every 5s update the fast-changing bits (Today KPI value, alert threshold,
+// timeline "now" marker + in-progress bar width, sessions summary for today).
+// Full re-render of Week / Month / Heatmap stays on refresh() only (they don't change second-to-second).
+setInterval(() => {
+  renderKpis();
+  renderAlert();
+  if (dPicker.value === D.today) renderSessions();
+}, 5_000);
+
+// Background silent refresh every 5 min — picks up cron-driven sessions without user action.
+setInterval(refresh, 5 * 60_000);
 </script>
 </body>
 </html>`;
