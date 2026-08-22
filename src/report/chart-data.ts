@@ -12,6 +12,9 @@ import { listLeaves, isLeave } from "../db/leaves.js";
 
 export interface DayBucket {
   date: string; label: string; hours: number; targetHours: number; isSunday: boolean;
+  // true if this is a past weekday with some work but below target (not a leave, not today).
+  // Highlighted in the week chart so short days are visible; still counted in daysCompleted.
+  isPartial?: boolean;
 }
 export interface WeekPeriod {
   key: string; label: string; start: string; end: string;
@@ -31,6 +34,7 @@ export interface MonthPeriod {
   excusedDates: string[]; unexcusedDates: string[];
   excusedByType: Record<string, string[]>;
   preEmploymentDays: number;
+  partialDays: number; partialDates: string[];
   weeks: WeekBucket[];
 }
 export interface SessionRowLite {
@@ -202,28 +206,49 @@ async function buildMonths(
     const effectiveStart = start < employmentStart ? employmentStart : start;
 
     let daysCompleted = 0;
+    let partialDays = 0;
     let excusedLeaves = 0;
     let unexcusedLeaves = 0;
     let sundaysWorked = 0;
     let preEmploymentDays = 0;
+    const partialDates: string[] = [];
     const excusedDates: string[] = [];
     const unexcusedDates: string[] = [];
     let d = start;
     while (d <= cursorEnd) {
       const workedMin = Math.round((dayHoursByDate.get(d) ?? 0) * 60);
       const beforeEmployment = d < employmentStart;
+      const isTodayD = d === today;
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
-        if (workedMin > 0 && d !== today) sundaysWorked++;
+        if (workedMin > 0 && !isTodayD) sundaysWorked++;
       } else if (workedMin >= dailyTargetMin) {
         daysCompleted++;
-      } else if (d !== today) {
-        if (manualLeaves.has(d)) { excusedLeaves++; excusedDates.push(d); }
-        else if (workedMin === 0) { unexcusedLeaves++; unexcusedDates.push(d); }
+      } else if (!isTodayD) {
+        // Past weekday under target.
+        // - manual leave → excused (compensates, doesn't count as completed)
+        // - some work (partial) → count as completed AND flag for highlighting
+        // - zero work, no leave → unexcused miss (misses one day of pace)
+        if (manualLeaves.has(d)) {
+          excusedLeaves++;
+          excusedDates.push(d);
+        } else if (workedMin > 0) {
+          daysCompleted++;
+          partialDays++;
+          partialDates.push(d);
+        } else {
+          unexcusedLeaves++;
+          unexcusedDates.push(d);
+        }
       }
       d = addDaysISO(d, 1);
     }
+
+    // Flag partial days on the week-level buckets so the chart can render them
+    // in a distinct color without recomputing the classification.
+    const partialSet = new Set(partialDates);
+    for (const w of weeks) for (const db2 of w.days) if (partialSet.has(db2.date)) db2.isPartial = true;
 
     const daysElapsed = isCurrent
       ? workingDaysBetween(effectiveStart, yesterday < effectiveStart ? effectiveStart : yesterday)
@@ -244,7 +269,9 @@ async function buildMonths(
       worked, balance, daysCompleted, daysElapsed, daysBalance,
       daysRemainingToTarget, workingDaysLeftIncludingToday,
       excusedLeaves, unexcusedLeaves, sundaysWorked, excusedDates, unexcusedDates,
-      excusedByType, preEmploymentDays, weeks,
+      excusedByType, preEmploymentDays,
+      partialDays, partialDates,
+      weeks,
     });
   }
   return months;

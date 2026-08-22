@@ -68,6 +68,8 @@ export function renderDashboardHtml(data: DashboardData): string {
   .leave-line { color: #6b7385; font-size: 11px; margin: -4px 0 12px; }
   .leave-line b { color: #b7becb; }
   .leave-line .comp { color: #4ade80; }
+  .leave-line .partial { color: #fb923c; }
+  .leave-line .partial b { color: #fb923c; }
 
   .cwrap { position: relative; height: 200px; margin-top: 4px; }
   .cwrap.clickable canvas { cursor: pointer; }
@@ -318,7 +320,7 @@ function renderWeek() {
     data: {
       labels: w.days.map(d => d.label),
       datasets: [
-        { label: "Worked", data: w.days.map(d => d.hours), backgroundColor: w.days.map(d => d.date === D.today ? "#fbbf24" : d.isSunday ? "#2f3547" : "#60a5fa"), borderRadius: 4, barPercentage: 0.68 },
+        { label: "Worked", data: w.days.map(d => d.hours), backgroundColor: w.days.map(d => d.date === D.today ? "#fbbf24" : d.isSunday ? "#2f3547" : d.isPartial ? "#fb923c" : "#60a5fa"), borderRadius: 4, barPercentage: 0.68 },
         { label: "Target", data: w.days.map(d => d.targetHours), type: "line", borderColor: "#3a4056", borderDash: [3,3], pointRadius: 0, borderWidth: 1 },
       ],
     },
@@ -382,6 +384,10 @@ function renderMonth() {
     if (m.excusedLeaves > 0) {
       const typeParts = Object.entries(m.excusedByType).map(([t, dates]) => t+' <b>'+dates.length+'</b> <span class="muted">('+dates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", ")+')</span>');
       parts.push('<span class="comp">Excused: '+typeParts.join(', ')+'</span>');
+    }
+    if (m.partialDays > 0) {
+      const dates = m.partialDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", ");
+      parts.push('<span class="partial">Partial days: <b>'+m.partialDays+'</b> <span class="muted">('+dates+')</span></span>');
     }
     if (m.unexcusedLeaves > 0) {
       const dates = m.unexcusedDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", ");
