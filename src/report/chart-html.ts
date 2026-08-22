@@ -292,6 +292,10 @@ export function renderDashboardHtml(data: DashboardData): string {
   <div class="card">
     <div class="card-head">
       <div class="card-title"><h2>Heatmap</h2><span class="card-sub" id="hmLabel"></span></div>
+      <div class="nav">
+        <select id="hmSelect"></select>
+        <button class="today-btn" id="hmToday">This month</button>
+      </div>
     </div>
     <div class="heatmap" id="heatmap"></div>
     <div class="heatmap-legend">
@@ -662,11 +666,14 @@ function renderSessions() {
   renderTimeline(date, rows);
 }
 
-// Heatmap: grid, rows = weeks in current month, cols = Mon..Sun. Cell color scales with hours.
+// Heatmap: grid, rows = weeks in the SELECTED heatmap month (independent of Month card's dropdown),
+// cols = Mon..Sun. Cell color scales with hours.
 function renderHeatmap() {
   const el = document.getElementById("heatmap");
-  const m = currentMonth();
+  const hmSelect = document.getElementById("hmSelect");
+  const m = D.months.find(mm => mm.key === hmSelect.value) || D.months[D.months.length - 1];
   document.getElementById("hmLabel").textContent = m.label;
+  document.getElementById("hmToday").disabled = hmSelect.value === D.months[D.months.length - 1].key;
   const targetHrs = D.todayTargetHours || 8;
   // color scale: 0, <25%, 25-50%, 50-75%, 75%+
   const colorFor = (h, isSun) => {
@@ -713,8 +720,15 @@ function renderHeatmap() {
 document.getElementById("wPrev").onclick = () => { if (weekIdx > 0) { weekIdx--; renderWeek(); } };
 document.getElementById("wNext").onclick = () => { if (weekIdx < D.weeks.length - 1) { weekIdx++; renderWeek(); } };
 document.getElementById("wToday").onclick = () => { weekIdx = D.weeks.length - 1; renderWeek(); };
-mSelect.onchange = () => { renderMonth(); renderHeatmap(); };
-document.getElementById("mToday").onclick = () => { mSelect.value = D.months[D.months.length - 1].key; renderMonth(); renderHeatmap(); };
+mSelect.onchange = renderMonth;
+document.getElementById("mToday").onclick = () => { mSelect.value = D.months[D.months.length - 1].key; renderMonth(); };
+
+// Heatmap has its own month navigator so it can be browsed independently of the Month card.
+const hmSelectEl = document.getElementById("hmSelect");
+D.months.slice().reverse().forEach((m) => { const opt = document.createElement("option"); opt.value = m.key; opt.textContent = m.label; hmSelectEl.appendChild(opt); });
+hmSelectEl.value = D.months[D.months.length - 1].key;
+hmSelectEl.onchange = renderHeatmap;
+document.getElementById("hmToday").onclick = () => { hmSelectEl.value = D.months[D.months.length - 1].key; renderHeatmap(); };
 document.getElementById("drillBack").onclick = () => { document.getElementById("monthDrill").hidden = true; document.getElementById("monthMain").hidden = false; };
 function shiftDay(days) {
   const d = new Date(dPicker.value+"T00:00:00"); d.setDate(d.getDate()+days);
