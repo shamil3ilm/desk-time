@@ -88,9 +88,17 @@ export function renderDashboardHtml(data: DashboardData): string {
   .foot a:hover { color: #b7becb; }
 
   .leave-form { margin-top: 14px; border-top: 1px solid #1c2029; padding-top: 12px; }
-  .leave-form summary { color: #7d8592; font-size: 12px; cursor: pointer; user-select: none; }
-  .leave-form summary:hover { color: #b7becb; }
-  .leave-form[open] summary { color: #b7becb; }
+  .leave-form summary {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #b7becb; font-size: 12px; font-weight: 500;
+    padding: 6px 12px; border: 1px solid #262c3b; border-radius: 5px;
+    cursor: pointer; user-select: none; list-style: none;
+  }
+  .leave-form summary::-webkit-details-marker { display: none; }
+  .leave-form summary::before { content: "+"; color: #6b7385; font-weight: 400; font-size: 14px; line-height: 1; }
+  .leave-form summary:hover { border-color: #3a4358; color: #e8ecf1; background: #1f2431; }
+  .leave-form[open] summary { color: #e8ecf1; border-color: #3a4358; }
+  .leave-form[open] summary::before { content: "−"; }
   .lf-body { margin-top: 10px; }
   .lf-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
   .lf-row label { color: #6b7385; font-size: 11px; }
