@@ -17,6 +17,7 @@ import { apiFetchSubmit } from "./routes/api-fetch.js";
 import { apiLeaveAdd, apiLeaveRemove } from "./routes/api-leave.js";
 import { apiPunchAdd } from "./routes/api-punch.js";
 import { internalSync } from "./routes/internal-sync.js";
+import { pollQueueConsumer, type PollMessage } from "./queue-consumer.js";
 import { redirect } from "./routes/_html.js";
 
 export interface Env {
@@ -26,6 +27,12 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   INTERNAL_SYNC_SECRET?: string;
   APP_URL?: string;
+  // Cron dispatch mode: "self-fetch" (default, no infra needed) or "queue"
+  // (requires POLL_QUEUE binding + Cloudflare Queue provisioned).
+  POLL_DISPATCH_MODE?: string;
+  // Optional Queue producer binding. Populated only when queue mode is enabled
+  // and the [[queues.producers]] block is present in wrangler.toml.
+  POLL_QUEUE?: Queue<PollMessage>;
   ATS_BASE_URL: string;
   APP_TZ_OFFSET: string;
   DAILY_TARGET_MINUTES: string;
@@ -103,19 +110,35 @@ export default {
     }
   },
 
-  // Cron Triggers — fan out to /internal/sync-user per user via self-fetch.
-  // Each self-fetch triggers a NEW Worker invocation with its own 50-subrequest budget,
-  // so one user's poll can't starve the others. Scales cleanly to ~48 users on free tier.
-  // For >48 users, migrate to Cloudflare Queues.
+  // Cron Triggers — fan out per user. Dispatch mode chosen at runtime by
+  // POLL_DISPATCH_MODE var: "self-fetch" (default, no infra) or "queue"
+  // (requires POLL_QUEUE binding + Cloudflare Queue provisioned).
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const userIds = await listActiveUserIds(env.DB);
-    console.log(`cron fired — ${userIds.length} active users`);
+    const mode = (env.POLL_DISPATCH_MODE || "self-fetch").toLowerCase();
+    console.log(`cron fired — ${userIds.length} active users, mode=${mode}`);
 
+    // Queue mode: send one message per user, consumer handles them in own invocations.
+    // Scales to thousands; auto-retries with DLQ. Preferred once user count > ~40.
+    if (mode === "queue" && env.POLL_QUEUE) {
+      if (userIds.length === 0) return;
+      const triggeredAt = new Date().toISOString();
+      await env.POLL_QUEUE.sendBatch(
+        userIds.map((id) => ({ body: { user_id: id, triggered_at: triggeredAt, trigger: "cron" as const } })),
+      );
+      return;
+    }
+    if (mode === "queue" && !env.POLL_QUEUE) {
+      console.warn("POLL_DISPATCH_MODE=queue but POLL_QUEUE binding is missing; falling back to self-fetch");
+    }
+
+    // Self-fetch mode: each user gets a fresh Worker invocation via HTTP to /internal/sync-user.
+    // Cron event uses only 1 (D1) + N (fetches) subrequests; each per-user invocation has its
+    // own 50-subrequest budget. Free-tier ceiling ~48 users per cron.
     const secret = env.INTERNAL_SYNC_SECRET;
     const appUrl = env.APP_URL;
-
     if (!secret || !appUrl) {
-      // Fallback for pre-configured deployments: run in-process (subrequest-limited to ~7 users).
+      // Last-resort fallback: in-process. Subrequests shared → breaks at ~7 users.
       console.warn("INTERNAL_SYNC_SECRET or APP_URL not set — falling back to in-process poll (limited to ~7 users)");
       const config = getConfig(env);
       for (const userId of userIds) {
@@ -127,7 +150,6 @@ export default {
       }
       return;
     }
-
     for (const userId of userIds) {
       ctx.waitUntil(
         fetch(`${appUrl.replace(/\/$/, "")}/internal/sync-user`, {
@@ -142,5 +164,11 @@ export default {
         ),
       );
     }
+  },
+
+  // Queue consumer — invoked by Cloudflare when queue mode is enabled and messages arrive.
+  // No-op / never invoked if [[queues.consumers]] isn't configured in wrangler.toml.
+  async queue(batch: MessageBatch<PollMessage>, env: Env): Promise<void> {
+    await pollQueueConsumer(batch, env);
   },
 };

@@ -50,3 +50,35 @@ MONTHLY_CL_ALLOWANCE = "1"
 SESSION_ALERT_MINUTES = "240"
 SESSION_MAX_MINUTES = "270"
 APP_URL = "https://desk-time.letmeknow.workers.dev"
+# Cron dispatch mode: "self-fetch" (default, no extra infra) or "queue"
+# (needs the [[queues.producers]] and [[queues.consumers]] blocks below
+# uncommented AND the queues created via `wrangler queues create`).
+POLL_DISPATCH_MODE = "self-fetch"
+
+# ────────────────────────────────────────────────────────────────
+# Cloudflare Queues (OPTIONAL — enable when user count approaches ~40)
+#
+# Enable steps:
+#   1. wrangler queues create desk-time-polls
+#   2. wrangler queues create desk-time-polls-dlq
+#   3. Uncomment the two blocks below
+#   4. Change POLL_DISPATCH_MODE above to "queue"
+#   5. npm run deploy
+#
+# Disable steps:
+#   1. Change POLL_DISPATCH_MODE back to "self-fetch"
+#   2. npm run deploy   (queue binding is fine to keep configured; unused)
+#
+# Free tier: 1M message operations/month (plenty for hundreds of users).
+# ────────────────────────────────────────────────────────────────
+
+# [[queues.producers]]
+# binding = "POLL_QUEUE"
+# queue = "desk-time-polls"
+
+# [[queues.consumers]]
+# queue = "desk-time-polls"
+# max_batch_size = 25           # how many messages per queue() invocation
+# max_batch_timeout = 5         # seconds to wait before flushing a partial batch
+# max_retries = 3               # attempts before dead-lettering
+# dead_letter_queue = "desk-time-polls-dlq"
