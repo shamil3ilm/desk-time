@@ -84,8 +84,7 @@ export function renderDashboardHtml(data: DashboardData): string {
 
   /* App layout — sidebar + content */
   .app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 56px 1fr; grid-template-areas: "brand topbar" "sidebar content"; min-height: 100vh; }
-  .brand { grid-area: brand; padding: 0 20px; display: flex; align-items: center; font-weight: 600; font-size: 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
-  .brand::before { content: "🕒"; margin-right: 8px; font-size: 18px; }
+  .brand { grid-area: brand; padding: 0 20px; display: flex; align-items: center; font-weight: 600; font-size: 16px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); letter-spacing: -0.01em; }
   .topbar { grid-area: topbar; padding: 0 20px; display: flex; align-items: center; justify-content: flex-end; gap: 8px; border-bottom: 1px solid var(--border); }
   .sidebar { grid-area: sidebar; padding: 16px 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
   .content { grid-area: content; padding: 24px; overflow-y: auto; max-width: 960px; }
@@ -441,17 +440,20 @@ async function refresh() {
 }
 function renderAll() { renderKpis(); renderAlert(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 
-/* Theme toggle */
+/* Theme toggle — the pre-paint script at the top already set data-theme.
+   Here we only wire the icon + click handler; charts pick up colors via css() when rendered.
+   Toggling AFTER initial render re-invokes renderWeek/renderMonth so Chart.js re-reads the vars. */
 function currentTheme() { return document.documentElement.getAttribute("data-theme") || "dark"; }
-function setTheme(t) {
-  document.documentElement.setAttribute("data-theme", t);
-  localStorage.setItem("dt.theme", t);
-  document.getElementById("themeToggle").textContent = t === "light" ? "☀" : "🌙";
-  // Chart.js references CSS vars for colors, but we need to force re-render so it re-reads the computed styles.
-  renderWeek(); renderMonth();
-}
-setTheme(currentTheme());
-document.getElementById("themeToggle").onclick = () => setTheme(currentTheme() === "light" ? "dark" : "light");
+function updateThemeIcon() { document.getElementById("themeToggle").textContent = currentTheme() === "light" ? "☀" : "🌙"; }
+updateThemeIcon();
+document.getElementById("themeToggle").onclick = () => {
+  const next = currentTheme() === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("dt.theme", next);
+  updateThemeIcon();
+  // Charts baked into canvases don't auto-restyle — force a re-render so they re-read CSS vars.
+  renderWeek(); renderMonth(); renderHeatmap();
+};
 
 /* View routing */
 function activateView(name) {
