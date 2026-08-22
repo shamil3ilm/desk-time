@@ -367,19 +367,26 @@ function renderMonth() {
   document.getElementById("mLabel").textContent = m.label;
   const bal = m.daysBalance;
   const paceStr = bal > 0 ? bal+"d ahead" : bal < 0 ? Math.abs(bal)+"d behind" : "on track";
-  // Hours banked/owed within the month (monthly reset). Distinct from days-based pace:
-  // days is forgiving (partial = 1 day), hours is precise (5h day counts as 5h against 8h expected).
+  // Hours banked/owed within the month (opt-in via toggle; preference stored in localStorage).
   const bankMin = m.bankedMinutes;
-  const hoursBankStr = bankMin === 0 ? ""
+  const showHours = localStorage.getItem("dt.showHoursBank") === "1";
+  const hoursBankStr = !showHours || bankMin === 0 ? ""
     : bankMin > 0 ? '<span class="sep">·</span><span class="pos">Hours <b>+'+fmtHM(bankMin)+'</b> banked</span>'
     : '<span class="sep">·</span><span class="neg">Hours <b>-'+fmtHM(-bankMin)+'</b> owed</span>';
+  const toggleStr = '<span class="sep">·</span><a href="#" id="mHoursToggle" class="muted" style="text-decoration:none;cursor:pointer">'+(showHours ? "hide hours" : "show hours")+'</a>';
   document.getElementById("mSummary").innerHTML =
     '<span>Required <b>'+m.workingDays+'d</b></span><span class="sep">·</span>'+
     '<span>Completed <b>'+m.daysCompleted+'d</b>'+(m.workingDaysLeftIncludingToday > 0 ? ' of <b>'+m.daysElapsed+'d</b> elapsed' : '')+'</span><span class="sep">·</span>'+
     '<span class="'+(bal>=0?"pos":"neg")+'">Pace <b>'+paceStr+'</b></span>'+
     hoursBankStr +
     (m.workingDaysLeftIncludingToday > 0 ? '<span class="sep">·</span><span class="muted">'+m.workingDaysLeftIncludingToday+'d left</span>' : '')+
-    '<span class="sep">·</span><span class="muted">'+fmtHours(m.worked)+' worked</span>';
+    '<span class="sep">·</span><span class="muted">'+fmtHours(m.worked)+' worked</span>'+
+    toggleStr;
+  document.getElementById("mHoursToggle").onclick = (e) => {
+    e.preventDefault();
+    localStorage.setItem("dt.showHoursBank", showHours ? "0" : "1");
+    renderMonth();
+  };
 
   const leaveEl = document.getElementById("mLeaves");
   const any = m.excusedLeaves + m.unexcusedLeaves + m.sundaysWorked + m.preEmploymentDays;
