@@ -22,15 +22,21 @@ database_id = "cf331122-9e59-47d1-b2f9-a30d5383d3d5"
 migrations_dir = "migrations"
 
 # ────────────────────────────────────────────────────────────────
-# Cron Triggers — 2 max on free tier, plenty for our fan-out design.
-# Both hit /api/sync-all which iterates users and fans out per-user.
-# Times are UTC; adjust to your working hours.
-# 09:00–21:00 IST = 03:30–15:30 UTC (offset +5:30)
+# Cron Triggers. Times are UTC (IST = UTC+5:30).
+#
+# Hourly range extended to 22:00 IST — folds in the old "23:30 IST day-end"
+# catch. That old slot suffered Cloudflare cron drift: a 1h delay meant it
+# fired past midnight IST, by which time the ATS /my-today endpoint had
+# rolled to the next day and yesterday's punch-out was unreachable.
+#
+# Optional 22:30 IST alarm (see src/alarms.ts): to enable, add
+#   "0 17 * * *"
+# to the crons list, `wrangler secret put TELEGRAM_BOT_TOKEN`, and populate
+# users.telegram_chat_id. worker.ts already dispatches this cron pattern.
 # ────────────────────────────────────────────────────────────────
 [triggers]
 crons = [
-  "30 3-15 * * *",   # hourly during work hours (IST 09:00–21:00)
-  "0 18 * * *"       # day-end catch (IST 23:30)
+  "30 3-16 * * *",   # hourly during work hours (IST 09:00–22:00, 14 slots)
 ]
 
 # ────────────────────────────────────────────────────────────────
