@@ -47,6 +47,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     --neg-bg: #2a0e10;
     --warn: #fbbf24;
     --warn-bg: #241a08;
+    --break: #a78bfa;
+    --break-dim: rgba(167,139,250,0.35);
     --grid: rgba(255,255,255,0.04);
     --shadow: 0 4px 12px rgba(0,0,0,0.5);
   }
@@ -69,6 +71,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     --neg-bg: #fee2e2;
     --warn: #ca8a04;
     --warn-bg: #fef9c3;
+    --break: #7c3aed;
+    --break-dim: rgba(124,58,237,0.28);
     --grid: rgba(0,0,0,0.04);
     --shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
@@ -261,6 +265,8 @@ export function renderDashboardHtml(data: DashboardData): string {
   .dayclock .hour-label { fill: var(--fg-subtle); font-size: 9px; font-weight: 500; text-anchor: middle; dominant-baseline: central; font-family: var(--font); opacity: 0.55; }
   .dayclock .arc { fill: none; stroke-width: 14; stroke-linecap: butt; transition: stroke 200ms, opacity 200ms; }
   .dayclock .arc.done { stroke: var(--accent); }
+  .dayclock .arc.brk { stroke: var(--break); opacity: 0.42; }
+  .dayclock .arc.brk:hover { opacity: 0.7; cursor: default; }
   .dayclock .arc.open { stroke: var(--accent); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 55%, transparent)); }
   .dayclock .arc.open.warn { stroke: var(--warn); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--warn) 60%, transparent)); }
   .dayclock .arc.open.crit { stroke: var(--neg); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--neg) 70%, transparent)); animation: cliveblink 1.4s ease-in-out infinite; }
@@ -286,14 +292,14 @@ export function renderDashboardHtml(data: DashboardData): string {
   .stat-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--fg-muted); opacity: 0.9; }
   .stat-card.pin::before { background: linear-gradient(90deg, var(--pos), color-mix(in srgb, var(--pos) 40%, transparent)); }
   .stat-card.pout::before { background: linear-gradient(90deg, var(--neg), color-mix(in srgb, var(--neg) 40%, transparent)); }
-  .stat-card.brk::before { background: linear-gradient(90deg, #a78bfa, color-mix(in srgb, #a78bfa 40%, transparent)); }
+  .stat-card.brk::before { background: linear-gradient(90deg, var(--break), color-mix(in srgb, var(--break) 40%, transparent)); }
   .stat-card.eta::before { background: linear-gradient(90deg, var(--warn), color-mix(in srgb, var(--warn) 40%, transparent)); }
   .stat-card .caption { font-size: 9px; margin-bottom: 8px; }
   .stat-card .val { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1.1; color: var(--fg); }
   .stat-card .val .u { font-size: 13px; font-weight: 500; color: var(--fg-muted); margin-left: 2px; }
   .stat-card.pin .val { color: var(--pos); }
   .stat-card.pout .val { color: var(--neg); }
-  .stat-card.brk .val { color: #a78bfa; }
+  .stat-card.brk .val { color: var(--break); }
   .stat-card.eta .val { color: var(--warn); }
   .stat-card .foot { font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
 
@@ -317,7 +323,9 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-dot.warn { background: var(--warn); }
   .flow-dot.err { background: var(--neg); animation: livepulse 1.4s ease-in-out infinite; }
   .flow-dot.done { background: var(--pos); }
+  .flow-dot.break { background: var(--break); }
   .flow-dot.pending { background: transparent; border: 1.5px solid var(--fg-subtle); }
+  .flow-item .flow-body .caption.break-cap { color: var(--break); }
   .flow-item .flow-body .caption { font-size: 11px; }
   .flow-item .flow-body .sub { font-size: 13px; color: var(--fg); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .flow-item .flow-body .sub b { font-weight: 600; }
@@ -1084,7 +1092,8 @@ function renderClock() {
     pctLabel.textContent = D.todayIsSunday ? "sunday" : "off day";
   }
 
-  // Session arcs
+  // Session + break arcs (break arcs drawn first so session arcs paint over their edges cleanly)
+  const arcSpecs = [];
   for (let i = 0; i < rows.length; i++) {
     const s = rows[i];
     const startH = isoLocalHour(s.punch_in);
@@ -1092,16 +1101,34 @@ function renderClock() {
     if (s.punch_out) {
       endH = isoLocalHour(s.punch_out);
     } else {
-      // Open — end at now
       endH = nowLocalHour();
       const tone = running >= D.sessionMaxMin ? "crit" : running >= D.sessionAlertMin ? "warn" : "";
       cls = "arc open" + (tone ? " " + tone : "");
     }
-    // At least a tiny visible arc (~3 min = 0.05 hr)
     if (endH - startH < 0.05) endH = startH + 0.05;
-    const a1 = startH * 15;
-    const a2 = endH * 15;
-    arcParts.push('<path class="' + cls + '" data-sidx="' + i + '" d="' + arcPath(a1, a2) + '"><title>Session ' + (i + 1) + ' · ' + fmtClock12(s.punch_in) + ' → ' + (s.punch_out ? fmtClock12(s.punch_out) : 'running') + '</title></path>');
+    arcSpecs.push({ kind: "session", cls, startH, endH, idx: i, sess: s });
+    // Break gap to next session
+    if (i + 1 < rows.length && s.punch_out) {
+      const next = rows[i + 1];
+      const bStart = endH;
+      const bEnd = isoLocalHour(next.punch_in);
+      if (bEnd > bStart + 0.02) {
+        const bMin = Math.round((bEnd - bStart) * 60);
+        arcSpecs.push({ kind: "break", cls: "arc brk", startH: bStart, endH: bEnd, min: bMin });
+      }
+    }
+  }
+  // Paint break arcs first so hover/tone of session arcs sits on top
+  for (const spec of arcSpecs) {
+    if (spec.kind !== "break") continue;
+    const a1 = spec.startH * 15, a2 = spec.endH * 15;
+    arcParts.push('<path class="' + spec.cls + '" d="' + arcPath(a1, a2) + '"><title>Break · ' + fmtHM(spec.min) + '</title></path>');
+  }
+  for (const spec of arcSpecs) {
+    if (spec.kind !== "session") continue;
+    const a1 = spec.startH * 15, a2 = spec.endH * 15;
+    const s = spec.sess;
+    arcParts.push('<path class="' + spec.cls + '" data-sidx="' + spec.idx + '" d="' + arcPath(a1, a2) + '"><title>Session ' + (spec.idx + 1) + ' · ' + fmtClock12(s.punch_in) + ' → ' + (s.punch_out ? fmtClock12(s.punch_out) : 'running') + '</title></path>');
   }
   arcs.innerHTML = arcParts.join('');
 
@@ -1675,12 +1702,12 @@ function renderFlow(date, rows, isToday) {
         const gapMin = Math.round(gapMs / 60000);
         items.push(
           '<div class="flow-item">'+
-            '<div class="flow-dot"></div>'+
+            '<div class="flow-dot break"></div>'+
             '<div class="flow-body">'+
-              '<div class="caption">BREAK</div>'+
+              '<div class="caption break-cap">BREAK</div>'+
               '<div class="sub muted"><b>'+fmtClock12(s.punch_out)+'</b> → <b>'+fmtClock12(next.punch_in)+'</b></div>'+
             '</div>'+
-            '<div class="flow-right"><span class="muted">'+fmtHMcompact(gapMin)+'</span></div>'+
+            '<div class="flow-right" style="color:var(--break)">'+fmtHMcompact(gapMin)+'</div>'+
           '</div>'
         );
       }
