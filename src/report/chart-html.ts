@@ -187,9 +187,9 @@ export function renderDashboardHtml(data: DashboardData): string {
   .card-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 
   /* ─────── Hero (Today / Week / Month top band) ─────── */
-  .hero { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 12px; display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; }
-  .hero.no-ring { grid-template-columns: 1fr; }
-  .hero.no-ring.with-alert { grid-template-columns: 1fr auto; }
+  .hero { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 14px; display: grid; grid-template-columns: 240px 1fr; gap: 28px; align-items: center; }
+  .hero.no-clock { grid-template-columns: 1fr; }
+  .hero.no-clock.with-alert { grid-template-columns: 1fr auto; }
   .hero-left { min-width: 0; }
   .hero-pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid transparent; }
   .hero-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -249,23 +249,53 @@ export function renderDashboardHtml(data: DashboardData): string {
   .pbar-ticks span:first-child::before { left: 0; }
   .pbar-ticks span:last-child::before { left: auto; right: 0; }
 
-  /* ─────── Stat strip (4 cards under hero) ─────── */
-  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-  .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 14px 18px; position: relative; overflow: hidden; transition: var(--transition); }
-  .stat-card:hover { border-color: var(--border-strong); }
-  .stat-card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--fg-muted); }
-  .stat-card.pin::before { background: var(--pos); }
-  .stat-card.pout::before { background: var(--neg); }
-  .stat-card.brk::before { background: #a78bfa; }
-  .stat-card.eta::before { background: var(--warn); }
-  .stat-card .caption { margin-bottom: 8px; }
-  .stat-card .val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
-  .stat-card .val .u { font-size: 13px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
-  .stat-card .foot { font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
-  .stat-card.pin .val { color: var(--pos); }
-  .stat-card.pout .val { color: var(--neg); }
-  .stat-card.brk .val { color: #a78bfa; }
-  .stat-card.eta .val { color: var(--warn); }
+  /* ─────── Radial 24h day clock (the unique element) ─────── */
+  .dayclock-wrap { position: relative; width: 240px; height: 240px; flex-shrink: 0; }
+  .dayclock { width: 100%; height: 100%; overflow: visible; display: block; }
+  .dayclock .track { fill: none; stroke: var(--border); stroke-width: 14; }
+  .dayclock .tick { stroke: var(--fg-subtle); stroke-width: 1; opacity: 0.5; }
+  .dayclock .tick.major { stroke: var(--fg-muted); stroke-width: 1.5; opacity: 1; }
+  .dayclock .hour-label { fill: var(--fg-subtle); font-size: 10px; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }
+  .dayclock .arc { fill: none; stroke-width: 14; stroke-linecap: butt; transition: stroke 200ms, opacity 200ms; }
+  .dayclock .arc.done { stroke: var(--accent); }
+  .dayclock .arc.open { stroke: var(--accent); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 55%, transparent)); }
+  .dayclock .arc.open.warn { stroke: var(--warn); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--warn) 60%, transparent)); }
+  .dayclock .arc.open.crit { stroke: var(--neg); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--neg) 70%, transparent)); animation: cliveblink 1.4s ease-in-out infinite; }
+  .dayclock .arc.hover, .dayclock .arc:hover { stroke: color-mix(in srgb, var(--accent) 75%, white); cursor: pointer; }
+  .dayclock .arc.highlight { stroke: color-mix(in srgb, var(--accent) 65%, white); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 80%, transparent)); }
+  .dayclock .hand { stroke: var(--neg); stroke-width: 1.5; stroke-linecap: round; opacity: 0.95; }
+  .dayclock .hand-dot { fill: var(--neg); }
+  .dayclock .marker { stroke: var(--bg-elev); stroke-width: 2; }
+  .dayclock .marker.eta { fill: var(--warn); }
+  .dayclock .marker.done { fill: var(--pos); }
+  @keyframes cliveblink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  .dayclock-center { position: absolute; inset: 40px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; gap: 4px; }
+  .dayclock-center .caption { font-size: 9px; letter-spacing: 0.1em; }
+  .dayclock-center .bt { justify-content: center; align-items: baseline; }
+  .dayclock-center .bt .n { font-size: 36px; }
+  .dayclock-center .bt .u { font-size: 15px; margin-right: 4px; }
+  .dayclock-center .bt .s { font-size: 15px; }
+  .dayclock-center .bt .s-u { font-size: 10px; }
+  .dayclock-center .sub { font-size: 11px; color: var(--fg-muted); line-height: 1.4; margin-top: 2px; }
+  .dayclock-center .sub b { color: var(--fg); font-weight: 600; }
+  .dayclock-center .sub .accent { color: var(--accent); }
+
+  /* ─────── Compact stat chips (inline pills replacing the 4-card strip) ─────── */
+  .stat-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 14px; }
+  .chip-stat { display: inline-flex; align-items: baseline; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 11px; font-variant-numeric: tabular-nums; transition: var(--transition); }
+  .chip-stat:hover { border-color: var(--border-strong); }
+  .chip-stat .cs-label { color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; }
+  .chip-stat .cs-val { color: var(--fg); font-weight: 600; }
+  .chip-stat .cs-val .u { font-size: 9px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
+  .chip-stat.pos { border-color: color-mix(in srgb, var(--pos) 40%, var(--border)); }
+  .chip-stat.pos .cs-val { color: var(--pos); }
+  .chip-stat.neg { border-color: color-mix(in srgb, var(--neg) 40%, var(--border)); }
+  .chip-stat.neg .cs-val { color: var(--neg); }
+  .chip-stat.warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+  .chip-stat.warn .cs-val { color: var(--warn); }
+  .chip-stat.accent { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .chip-stat.accent .cs-val { color: var(--accent); }
 
   /* ─────── Session flow (narrative vertical timeline) ─────── */
   .flow-list { position: relative; padding-left: 4px; }
@@ -307,40 +337,40 @@ export function renderDashboardHtml(data: DashboardData): string {
   .hero-alert.crit .hero-alert-body .caption { color: var(--neg); }
 
   /* ─────── Responsive breakpoints ─────── */
-  @media (max-width: 1024px) {
+  @media (max-width: 1100px) {
     .content { padding: 20px; }
-    .stat-strip { gap: 8px; }
-    .hero.with-alert { grid-template-columns: auto 1fr; }
-    .hero-alert { grid-column: 1 / -1; max-width: none; margin-top: 8px; }
-    .bt .n { font-size: 44px; }
-    .bt .u { font-size: 20px; }
+    .hero.with-alert { grid-template-columns: 240px 1fr; }
+    .hero-alert { grid-column: 1 / -1; max-width: none; margin-top: 4px; }
   }
   @media (max-width: 720px) {
     .app { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; grid-template-areas: "brand" "topbar" "content"; }
     .sidebar { display: none; }
     .content { padding: 14px; max-width: none; }
-    .hero { grid-template-columns: 1fr; text-align: left; padding: 18px; gap: 16px; }
-    .hero.with-alert { grid-template-columns: 1fr; }
-    .hero-alert { margin-top: 0; }
-    .ring { width: 84px; height: 84px; }
-    .ring svg { width: 84px; height: 84px; }
-    .stat-strip { grid-template-columns: repeat(2, 1fr); }
-    .stat-card .val { font-size: 18px; }
-    .bt .n { font-size: 36px; }
-    .bt .u { font-size: 16px; }
+    .hero { grid-template-columns: 200px 1fr; padding: 18px; gap: 18px; }
+    .hero.with-alert { grid-template-columns: 200px 1fr; }
+    .dayclock-wrap { width: 200px; height: 200px; }
+    .dayclock-center { inset: 32px 20px; }
+    .dayclock-center .bt .n { font-size: 30px; }
     .flow-item { gap: 10px; }
     .flow-right { font-size: 16px; }
     .view-head { flex-direction: column; align-items: flex-start; }
     .topbar { padding: 0 12px; gap: 4px; }
     .user-chip { display: none; }
     .btn.sm { padding: 0 8px; }
+    .stat-chips .chip-stat { font-size: 10px; padding: 4px 10px; }
   }
-  @media (max-width: 480px) {
-    .stat-strip { grid-template-columns: 1fr; }
-    .kpis { grid-template-columns: 1fr; }
-    .bt .n { font-size: 30px; }
-    .hero { padding: 14px; }
-    .topbar .btn.sm span, .topbar #themeToggle { font-size: 11px; }
+  @media (max-width: 560px) {
+    .hero { grid-template-columns: 1fr; text-align: center; gap: 14px; }
+    .hero.with-alert { grid-template-columns: 1fr; }
+    .dayclock-wrap { margin: 0 auto; width: 200px; height: 200px; }
+    .hero-left { text-align: left; }
+    .stat-chips { justify-content: flex-start; }
+    .hero-alert { margin-top: 0; }
+  }
+  @media (max-width: 400px) {
+    .dayclock-wrap { width: 180px; height: 180px; }
+    .dayclock-center { inset: 28px 18px; }
+    .dayclock-center .bt .n { font-size: 26px; }
   }
 
   /* Chart tab strip */
@@ -494,20 +524,31 @@ export function renderDashboardHtml(data: DashboardData): string {
       </div>
 
       <section class="hero" id="hero">
-        <div class="ring" id="heroRing" hidden>
-          <svg width="108" height="108" viewBox="0 0 108 108">
-            <circle class="track" cx="54" cy="54" r="48"></circle>
-            <circle class="fill" cx="54" cy="54" r="48" stroke-dasharray="301.59" stroke-dashoffset="301.59"></circle>
+        <div class="dayclock-wrap" id="dayclockWrap">
+          <svg class="dayclock" viewBox="0 0 240 240">
+            <circle class="track" cx="120" cy="120" r="100"/>
+            <g id="clockTicks"></g>
+            <g id="clockLabels">
+              <text class="hour-label" x="120" y="16">0</text>
+              <text class="hour-label" x="224" y="120">6</text>
+              <text class="hour-label" x="120" y="224">12</text>
+              <text class="hour-label" x="16" y="120">18</text>
+            </g>
+            <g id="clockArcs"></g>
+            <g id="clockMarkers"></g>
+            <line id="clockHand" class="hand" x1="120" y1="120" x2="120" y2="30"/>
+            <circle class="hand-dot" cx="120" cy="120" r="3.5"/>
           </svg>
-          <div class="ring-inner"><div class="n" id="ringN">—</div><div class="l" id="ringL">Session</div></div>
+          <div class="dayclock-center">
+            <div class="caption" id="heroCap">Today</div>
+            <div class="bt" id="heroBt"></div>
+            <div class="sub" id="heroSub"></div>
+          </div>
         </div>
         <div class="hero-left">
-          <div class="caption" id="heroCap">Today</div>
-          <div class="bt" id="heroBt"></div>
-          <div class="hero-sub" id="heroSub"></div>
-          <div style="margin-top:12px">
-            <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
-          </div>
+          <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
+          <div class="hero-line" id="heroLine"></div>
+          <div class="stat-chips" id="statChips"></div>
         </div>
         <div class="hero-alert" id="heroAlert" hidden>
           <div class="icon" id="heroAlertIcon">!</div>
@@ -518,17 +559,6 @@ export function renderDashboardHtml(data: DashboardData): string {
           </div>
         </div>
       </section>
-
-      <div class="pbar lg" id="heroPbar" hidden><div class="fill"></div></div>
-      <div class="pbar-labels" id="heroPbarLabels" hidden></div>
-      <div class="pbar-ticks" id="heroPbarTicks" hidden></div>
-
-      <div class="stat-strip" id="statStrip" hidden>
-        <div class="stat-card pin"><div class="caption">Punch in</div><div class="val" id="statPin">—</div><div class="foot" id="statPinFoot">—</div></div>
-        <div class="stat-card pout"><div class="caption">Punch out</div><div class="val" id="statPout">—</div><div class="foot" id="statPoutFoot">—</div></div>
-        <div class="stat-card brk"><div class="caption">Break time</div><div class="val" id="statBrk">—</div><div class="foot" id="statBrkFoot">—</div></div>
-        <div class="stat-card eta"><div class="caption">Leave office by</div><div class="val" id="statEta">—</div><div class="foot" id="statEtaFoot">—</div></div>
-      </div>
 
       <div class="card">
         <div class="card-head">
@@ -541,19 +571,6 @@ export function renderDashboardHtml(data: DashboardData): string {
           </div>
         </div>
         <div class="summary" id="sSummary"></div>
-        <div class="timeline-wrap">
-          <div class="timeline-axis">
-            <span style="left:0%">0</span><span style="left:12.5%">3</span><span style="left:25%">6</span>
-            <span style="left:37.5%">9</span><span style="left:50%">12</span><span style="left:62.5%">15</span>
-            <span style="left:75%">18</span><span style="left:87.5%">21</span><span style="left:100%">24</span>
-          </div>
-          <div class="timeline" id="timeline"></div>
-          <div class="timeline-legend">
-            <span><i class="tl-work"></i>work</span>
-            <span><i class="tl-open"></i>in progress</span>
-            <span><i class="tl-break"></i>break</span>
-          </div>
-        </div>
         <div class="flow-list" id="flowList"></div>
         <details class="form-block">
           <summary>Missed a punch? Add it manually</summary>
@@ -732,7 +749,7 @@ async function refresh() {
     renderAll();
   } catch (err) { toast("Refresh failed: " + err.message, "err", 3500); }
 }
-function renderAll() { renderHero(); renderStats(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
+function renderAll() { renderClock(); renderHero(); renderChips(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 
 /* Theme toggle — the pre-paint script at the top already set data-theme.
    Here we only wire the icon + click handler; charts pick up colors via css() when rendered.
@@ -844,106 +861,215 @@ function renderHero() {
   const cap = document.getElementById("heroCap");
   const bt = document.getElementById("heroBt");
   const sub = document.getElementById("heroSub");
-  const ring = document.getElementById("heroRing");
-  const pbar = document.getElementById("heroPbar");
-  const pbarLabels = document.getElementById("heroPbarLabels");
-  const pbarTicks = document.getElementById("heroPbarTicks");
+  const heroLine = document.getElementById("heroLine");
 
   const running = liveRunningMin();
-  const runningSec = liveRunningSec();
   const totalLiveMin = D.closedTodayHours * 60 + running;
   const totalLiveSec = liveTodaySec();
   const targetMin = D.todayTargetHours * 60;
   const remaining = Math.max(0, targetMin - totalLiveMin);
-  const bal = D.monthDaysBalance;
 
-  hero.classList.remove("with-alert", "no-ring");
+  hero.classList.remove("with-alert");
   pill.className = "hero-pill";
-
-  const setRingPct = (pct, tone, nText, lText) => {
-    ring.hidden = false;
-    setRing("heroRing", pct, tone);
-    document.getElementById("ringN").textContent = nText;
-    document.getElementById("ringL").textContent = lText;
-  };
 
   if (D.todayNonWorking) {
     pill.classList.add("off");
     pillLabel.textContent = D.todayIsSunday ? "Off — Sunday" : "Off — Leave day";
-    cap.textContent = (D.isPunchedIn || totalLiveMin > 0) ? "BONUS HOURS TODAY" : (D.todayIsSunday ? "SUNDAY" : "LEAVE DAY");
+    cap.textContent = (D.isPunchedIn || totalLiveMin > 0) ? "BONUS TODAY" : "TODAY";
     if (D.isPunchedIn || totalLiveMin > 0) {
       bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: D.isPunchedIn });
-      sub.innerHTML = D.isPunchedIn ? 'Session <b>'+fmtHM(running)+'</b> · counts as bonus' : 'Great work on your day off';
+      sub.innerHTML = D.isPunchedIn ? 'session <b>' + fmtHM(running) + '</b>' : 'punched out';
+      heroLine.innerHTML = 'Every hour is bonus — no target today.';
     } else {
-      bt.innerHTML = '<span class="n">Off</span>';
-      sub.innerHTML = 'No target today';
+      bt.innerHTML = '<span class="n">off</span>';
+      sub.innerHTML = D.todayIsSunday ? 'weekend' : 'on leave';
+      heroLine.innerHTML = 'Enjoy your day off.';
     }
-    ring.hidden = true;
-    hero.classList.add("no-ring");
-    pbar.hidden = true; pbarLabels.hidden = true; pbarTicks.hidden = true;
   } else if (D.isPunchedIn) {
     pill.classList.add("working");
     pillLabel.textContent = "Punched in — counting live";
-    cap.textContent = "COMPLETED WORKING HOURS";
+    cap.textContent = "COMPLETED";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: true });
+    sub.innerHTML = 'of <b>' + fmtHours(D.todayTargetHours) + '</b>';
     if (totalLiveMin >= targetMin) {
-      sub.innerHTML = '<b class="pos">Target met</b> · <b>'+fmtHM(totalLiveMin - targetMin)+'</b> banked · session <b>'+fmtHM(running)+'</b>';
+      heroLine.innerHTML = '<b class="pos">Target met</b> · <b>' + fmtHM(totalLiveMin - targetMin) + '</b> banked · session <b>' + fmtHM(running) + '</b>';
     } else {
       const e = new Date(D.etaEpochMs);
-      sub.innerHTML = '<b>'+fmtHM(remaining)+'</b> left · finish by <b class="accent">'+fmtTime12(e.getHours(), e.getMinutes())+'</b> · session <b>'+fmtHM(running)+'</b>';
+      heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go · finish by <b class="accent">' + fmtTime12(e.getHours(), e.getMinutes()) + '</b>';
     }
-    // Ring — completion percentage against 8h
-    const donePct = targetMin === 0 ? 0 : totalLiveMin / targetMin;
-    setRingPct(donePct, donePct >= 1 ? "" : "", Math.round(donePct * 100) + "%", "OF " + Math.round(D.todayTargetHours) + "H");
-    // Progress bar with 0/2/4/6/8h ticks
-    const pctForBar = Math.min(1, totalLiveMin / (targetMin || 1));
-    setPbar("heroPbar", "heroPbarLabels", pctForBar, donePct >= 1 ? "pos" : "", fmtHM(totalLiveMin) + ' worked', fmtHM(remaining) + ' remaining');
-    renderPbarTicks(targetMin);
   } else if (totalLiveMin >= targetMin && totalLiveMin > 0) {
     pill.classList.add("done");
     pillLabel.textContent = "Done for today";
     cap.textContent = "TARGET MET";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
     const overMin = totalLiveMin - targetMin;
-    sub.innerHTML = '<b class="pos">'+fmtHM(overMin)+'</b> banked today' + (bal !== 0 ? ' · month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b>' : '');
-    setRingPct(1, "", "100%", "OF " + Math.round(D.todayTargetHours) + "H");
-    setPbar("heroPbar", "heroPbarLabels", 1, "pos", fmtHM(totalLiveMin) + ' worked', 'complete');
-    renderPbarTicks(targetMin);
+    sub.innerHTML = '<b class="accent">' + fmtHM(overMin) + '</b> banked';
+    heroLine.innerHTML = 'Target of <b>' + fmtHours(D.todayTargetHours) + '</b> reached · <b class="pos">' + fmtHM(overMin) + '</b> in the bank.';
   } else if (totalLiveMin > 0) {
     pill.classList.add("break");
     pillLabel.textContent = "On break";
-    cap.textContent = "COMPLETED WORKING HOURS";
+    cap.textContent = "COMPLETED";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
+    sub.innerHTML = 'of <b>' + fmtHours(D.todayTargetHours) + '</b>';
     const eta = new Date(D.etaEpochMs);
-    sub.innerHTML = '<b>'+fmtHM(remaining)+'</b> left · resume to finish by <b class="accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</b>';
-    const donePct = totalLiveMin / targetMin;
-    setRingPct(donePct, "", Math.round(donePct * 100) + "%", "OF " + Math.round(D.todayTargetHours) + "H");
-    setPbar("heroPbar", "heroPbarLabels", donePct, "", fmtHM(totalLiveMin) + ' worked', fmtHM(remaining) + ' remaining');
-    renderPbarTicks(targetMin);
+    heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go · resume to finish by <b class="accent">' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
   } else {
     pill.classList.add("idle");
     pillLabel.textContent = "Not started";
-    cap.textContent = "TODAY'S TARGET";
+    cap.textContent = "TARGET";
     bt.innerHTML = '<span class="n">' + Math.round(D.todayTargetHours) + '</span><span class="u">h</span>';
+    sub.innerHTML = 'ahead of you';
     const eta = new Date(Date.now() + targetMin * 60000);
-    sub.innerHTML = 'Punch in to finish by <b class="accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</b>';
-    ring.hidden = true; hero.classList.add("no-ring");
-    pbar.hidden = true; pbarLabels.hidden = true; pbarTicks.hidden = true;
+    heroLine.innerHTML = 'Punch in to finish by <b class="accent">' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
   }
 
   renderHeroAlert(hero);
 }
 
-function renderPbarTicks(targetMin) {
-  const el = document.getElementById("heroPbarTicks");
-  if (!el || targetMin === 0) { if (el) el.hidden = true; return; }
-  const hrs = Math.round(targetMin / 60);
-  const step = hrs >= 8 ? 2 : 1;
+/* ─── Radial 24h day clock ─── */
+const CLOCK_CX = 120, CLOCK_CY = 120, CLOCK_R = 100;
+function polar(cx, cy, r, angleDeg) {
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+function arcPath(startAngle, endAngle) {
+  // Guard: >= full circle
+  if (endAngle - startAngle >= 359.99) endAngle = startAngle + 359.99;
+  const start = polar(CLOCK_CX, CLOCK_CY, CLOCK_R, startAngle);
+  const end = polar(CLOCK_CX, CLOCK_CY, CLOCK_R, endAngle);
+  const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+  return "M " + start.x + " " + start.y + " A " + CLOCK_R + " " + CLOCK_R + " 0 " + largeArc + " 1 " + end.x + " " + end.y;
+}
+function isoLocalHour(iso) {
+  // Parse HH:mm from the ISO's local portion (chars 11-16); we treat the offset in ISO as authoritative.
+  const h = +iso.slice(11, 13);
+  const m = +iso.slice(14, 16);
+  return h + m / 60;
+}
+function nowLocalHour() {
+  const now = new Date();
+  return now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+}
+function renderClockTicks() {
+  const el = document.getElementById("clockTicks");
+  if (!el || el.dataset.rendered === "1") return;
   const parts = [];
-  for (let h = 0; h <= hrs; h += step) parts.push('<span>' + h + 'h</span>');
-  if (parts[parts.length - 1] !== '<span>' + hrs + 'h</span>') parts.push('<span>' + hrs + 'h</span>');
+  for (let h = 0; h < 24; h++) {
+    const a = h * 15;
+    const isMajor = h % 6 === 0;
+    const inner = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - (isMajor ? 12 : 8), a);
+    const outer = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 4, a);
+    parts.push('<line class="tick' + (isMajor ? ' major' : '') + '" x1="' + inner.x.toFixed(2) + '" y1="' + inner.y.toFixed(2) + '" x2="' + outer.x.toFixed(2) + '" y2="' + outer.y.toFixed(2) + '"/>');
+  }
   el.innerHTML = parts.join('');
-  el.hidden = false;
+  el.dataset.rendered = "1";
+}
+function renderClock() {
+  renderClockTicks();
+  const arcs = document.getElementById("clockArcs");
+  const markers = document.getElementById("clockMarkers");
+  const rows = sortedTodaySessions();
+  const arcParts = [];
+  const running = liveRunningMin();
+
+  // Session arcs
+  for (let i = 0; i < rows.length; i++) {
+    const s = rows[i];
+    const startH = isoLocalHour(s.punch_in);
+    let endH; let cls = "arc done";
+    if (s.punch_out) {
+      endH = isoLocalHour(s.punch_out);
+    } else {
+      // Open — end at now
+      endH = nowLocalHour();
+      const tone = running >= D.sessionMaxMin ? "crit" : running >= D.sessionAlertMin ? "warn" : "";
+      cls = "arc open" + (tone ? " " + tone : "");
+    }
+    // At least a tiny visible arc (~3 min = 0.05 hr)
+    if (endH - startH < 0.05) endH = startH + 0.05;
+    const a1 = startH * 15;
+    const a2 = endH * 15;
+    arcParts.push('<path class="' + cls + '" data-sidx="' + i + '" d="' + arcPath(a1, a2) + '"><title>Session ' + (i + 1) + ' · ' + fmtClock12(s.punch_in) + ' → ' + (s.punch_out ? fmtClock12(s.punch_out) : 'running') + '</title></path>');
+  }
+  arcs.innerHTML = arcParts.join('');
+
+  // Wire hover cross-highlight to flow-list
+  arcs.querySelectorAll('.arc[data-sidx]').forEach((p) => {
+    const idx = +p.getAttribute('data-sidx');
+    p.addEventListener('mouseenter', () => highlightSession(idx, true));
+    p.addEventListener('mouseleave', () => highlightSession(idx, false));
+  });
+
+  // Markers — target met (past or future), current now-hand
+  const markerParts = [];
+  const targetMin = D.todayTargetHours * 60;
+  if (targetMin > 0) {
+    // "Where target would be met if you keep working"
+    const totalLive = D.closedTodayHours * 60 + running;
+    if (totalLive >= targetMin) {
+      // Already met — mark the historical moment (approximate: use etaEpochMs which represents projected finish)
+      // Actually, better to mark "now" position with a done marker if punched out
+      if (!D.isPunchedIn && rows.length > 0) {
+        // Marker at last punch_out (target-met moment approximately)
+        const last = rows[rows.length - 1];
+        if (last.punch_out) {
+          const h = isoLocalHour(last.punch_out);
+          const p = polar(CLOCK_CX, CLOCK_CY, CLOCK_R + 12, h * 15);
+          markerParts.push('<circle class="marker done" cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="5"><title>Target reached at ' + fmtClock12(last.punch_out) + '</title></circle>');
+        }
+      }
+    } else if (D.etaEpochMs) {
+      // Pending — show ETA marker
+      const eta = new Date(D.etaEpochMs);
+      const h = eta.getHours() + eta.getMinutes() / 60;
+      const p = polar(CLOCK_CX, CLOCK_CY, CLOCK_R + 12, h * 15);
+      markerParts.push('<circle class="marker eta" cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="5"><title>Target ETA ' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</title></circle>');
+    }
+  }
+  markers.innerHTML = markerParts.join('');
+
+  // Hand — current time
+  const nowH = nowLocalHour();
+  const tip = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 6, nowH * 15);
+  const hand = document.getElementById("clockHand");
+  hand.setAttribute("x2", tip.x.toFixed(2));
+  hand.setAttribute("y2", tip.y.toFixed(2));
+}
+
+/* Update just the clock hand (for the 1s tick — cheaper than re-drawing all arcs) */
+function tickClockHand() {
+  const hand = document.getElementById("clockHand");
+  if (!hand) return;
+  const nowH = nowLocalHour();
+  const tip = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 6, nowH * 15);
+  hand.setAttribute("x2", tip.x.toFixed(2));
+  hand.setAttribute("y2", tip.y.toFixed(2));
+}
+
+/* ─── Compact stat chips ─── */
+function renderChips() {
+  const el = document.getElementById("statChips");
+  const rows = sortedTodaySessions();
+  const chips = [];
+  const push = (label, val, tone) => chips.push('<div class="chip-stat' + (tone ? ' ' + tone : '') + '"><span class="cs-label">' + label + '</span><span class="cs-val">' + val + '</span></div>');
+
+  if (rows.length > 0) push('IN', fmtClock12(rows[0].punch_in), '');
+  if (rows.length > 0) push('OUT', D.isPunchedIn ? 'still in' : fmtClock12(rows[rows.length - 1].punch_out), D.isPunchedIn ? 'accent' : '');
+  const bMin = todayBreakMinutes();
+  push('BREAK', bMin === 0 ? '0m' : fmtHM(bMin), '');
+
+  const targetMin = D.todayTargetHours * 60;
+  const totalMin = D.closedTodayHours * 60 + liveRunningMin();
+  if (targetMin > 0 && totalMin < targetMin) {
+    const e = new Date(D.etaEpochMs || (Date.now() + targetMin * 60000));
+    push('ETA', fmtTime12(e.getHours(), e.getMinutes()), 'warn');
+  } else if (targetMin > 0 && totalMin >= targetMin) {
+    push('OVER', '+' + fmtHM(totalMin - targetMin), 'pos');
+  }
+  const bal = D.monthDaysBalance;
+  if (bal !== 0) push('MONTH', (bal > 0 ? '+' : '') + bal + 'd', bal > 0 ? 'pos' : 'neg');
+
+  el.innerHTML = chips.join('');
 }
 
 function renderHeroAlert(hero) {
@@ -1467,7 +1593,6 @@ function renderSessions() {
   else parts.push('<span class="sep">·</span>', '<span>Target <b>'+fmtHM(target)+'</b></span>', '<span class="sep">·</span>', '<span class="'+(bal>=0?"pos":"neg")+'">Balance <b>'+(bal>=0?"+":"")+fmtHM(bal)+'</b></span>');
   document.getElementById("sSummary").innerHTML = parts.join("");
 
-  renderTimeline(date, rows);
   renderFlow(date, rows, isToday);
 }
 
@@ -1676,11 +1801,12 @@ function renderFooter() {
 }
 
 /* Initial render + tick.
-   1s: update only the big-time seconds display (cheap, keeps the "live" feel).
-   5s: re-render hero, stats, and (if viewing today) the flow list — minute-level updates.
-   5min: full refresh from the API. */
+   1s: rotate the clock hand + update the big-time seconds — cheap, no full re-render.
+   30s: re-draw the whole clock (new session arcs, ETA marker) + hero + chips + today flow.
+   5min: full API refresh. */
 renderAll();
 setInterval(() => {
+  tickClockHand();
   if (!D.isPunchedIn) return;
   const bt = document.getElementById("heroBt");
   if (bt && document.querySelector(".view.active[data-view=today]")) {
@@ -1688,9 +1814,9 @@ setInterval(() => {
   }
 }, 1000);
 setInterval(() => {
-  renderHero(); renderStats();
+  renderClock(); renderHero(); renderChips();
   if (dPicker.value === D.today) renderSessions();
-}, 5_000);
+}, 30_000);
 setInterval(refresh, 5 * 60_000);
 </script>
 </body>
