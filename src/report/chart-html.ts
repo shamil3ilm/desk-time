@@ -233,11 +233,11 @@ export function renderDashboardHtml(data: DashboardData): string {
   .pbar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
   /* ─────── Big-time typography (huge number + tiny unit letters) ─────── */
-  .bt { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.03em; }
-  .bt .n { font-size: 52px; font-weight: 700; color: var(--fg); }
-  .bt .u { font-size: 22px; font-weight: 500; color: var(--fg-muted); margin-left: -2px; margin-right: 6px; }
-  .bt .s { font-size: 22px; font-weight: 500; color: var(--fg-subtle); }
-  .bt .s-u { font-size: 14px; font-weight: 500; color: var(--fg-subtle); margin-left: -1px; }
+  .bt { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.035em; }
+  .bt .n { font-size: 68px; font-weight: 700; color: var(--fg); }
+  .bt .u { font-size: 26px; font-weight: 500; color: var(--fg-muted); margin-left: -2px; margin-right: 8px; }
+  .bt .s { font-size: 26px; font-weight: 500; color: var(--fg-subtle); }
+  .bt .s-u { font-size: 16px; font-weight: 500; color: var(--fg-subtle); margin-left: -1px; }
   .bt.tight .n { font-size: 32px; } .bt.tight .u { font-size: 16px; }
   .caption { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; color: var(--fg-muted); }
   .hero .caption { margin-bottom: 8px; }
@@ -279,21 +279,33 @@ export function renderDashboardHtml(data: DashboardData): string {
   .dayclock-center .pct { font-size: 24px; font-weight: 700; color: var(--fg-muted); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; }
   .dayclock-center .pct-label { font-size: 9px; font-weight: 600; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.1em; }
 
-  /* ─────── Compact stat chips (inline pills replacing the 4-card strip) ─────── */
-  .stat-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 14px; }
-  .chip-stat { display: inline-flex; align-items: baseline; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 11px; font-variant-numeric: tabular-nums; transition: var(--transition); }
-  .chip-stat:hover { border-color: var(--border-strong); }
-  .chip-stat .cs-label { color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px; }
-  .chip-stat .cs-val { color: var(--fg); font-weight: 600; }
-  .chip-stat .cs-val .u { font-size: 9px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
-  .chip-stat.pos { border-color: color-mix(in srgb, var(--pos) 40%, var(--border)); }
-  .chip-stat.pos .cs-val { color: var(--pos); }
-  .chip-stat.neg { border-color: color-mix(in srgb, var(--neg) 40%, var(--border)); }
-  .chip-stat.neg .cs-val { color: var(--neg); }
-  .chip-stat.warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
-  .chip-stat.warn .cs-val { color: var(--warn); }
-  .chip-stat.accent { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
-  .chip-stat.accent .cs-val { color: var(--accent); }
+  /* ─────── Stat row (4 compact cards under progress bar) ─────── */
+  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 12px; position: relative; overflow: hidden; transition: var(--transition); }
+  .stat-card:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .stat-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--fg-muted); opacity: 0.9; }
+  .stat-card.pin::before { background: linear-gradient(90deg, var(--pos), color-mix(in srgb, var(--pos) 40%, transparent)); }
+  .stat-card.pout::before { background: linear-gradient(90deg, var(--neg), color-mix(in srgb, var(--neg) 40%, transparent)); }
+  .stat-card.brk::before { background: linear-gradient(90deg, #a78bfa, color-mix(in srgb, #a78bfa 40%, transparent)); }
+  .stat-card.eta::before { background: linear-gradient(90deg, var(--warn), color-mix(in srgb, var(--warn) 40%, transparent)); }
+  .stat-card .caption { font-size: 9px; margin-bottom: 8px; }
+  .stat-card .val { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1.1; color: var(--fg); }
+  .stat-card .val .u { font-size: 13px; font-weight: 500; color: var(--fg-muted); margin-left: 2px; }
+  .stat-card.pin .val { color: var(--pos); }
+  .stat-card.pout .val { color: var(--neg); }
+  .stat-card.brk .val { color: #a78bfa; }
+  .stat-card.eta .val { color: var(--warn); }
+  .stat-card .foot { font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
+
+  /* ─────── Hero progress bar w/ gradient + tick labels ─────── */
+  .hero-pbar-wrap { margin: 4px 0 16px; }
+  .hero-pbar { position: relative; height: 10px; background: var(--border); border-radius: 999px; overflow: hidden; }
+  .hero-pbar .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 40%, transparent) 0%, var(--accent) 100%); border-radius: 999px; box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); transition: width 500ms cubic-bezier(0.2, 0, 0.1, 1); }
+  .hero-pbar.pos .fill { background: linear-gradient(90deg, color-mix(in srgb, var(--pos) 40%, transparent) 0%, var(--pos) 100%); box-shadow: 0 0 12px color-mix(in srgb, var(--pos) 45%, transparent); }
+  .hero-pbar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-muted); margin-top: 8px; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .hero-pbar-ticks { position: relative; height: 12px; margin-top: 4px; }
+  .hero-pbar-ticks span { position: absolute; transform: translateX(-50%); font-size: 9px; color: var(--fg-subtle); font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: 0.02em; }
+  .hero-pbar-ticks span::before { content: ""; display: block; width: 1px; height: 3px; background: var(--border-strong); margin: 0 auto 2px; }
 
   /* ─────── Session flow (narrative vertical timeline) ─────── */
   .flow-list { position: relative; padding-left: 4px; }
@@ -545,6 +557,11 @@ export function renderDashboardHtml(data: DashboardData): string {
         <div class="hero-left">
           <div class="caption" id="heroCap">TODAY</div>
           <div class="bt" id="heroBt"></div>
+          <div class="hero-pbar-wrap" id="heroPbarWrap" hidden>
+            <div class="hero-pbar" id="heroPbar"><div class="fill"></div></div>
+            <div class="hero-pbar-labels" id="heroPbarLabels"></div>
+            <div class="hero-pbar-ticks" id="heroPbarTicks"></div>
+          </div>
           <div class="hero-line" id="heroLine"></div>
           <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
         </div>
@@ -557,6 +574,13 @@ export function renderDashboardHtml(data: DashboardData): string {
           </div>
         </div>
       </section>
+
+      <div class="stat-strip" id="statStrip" hidden>
+        <div class="stat-card pin"><div class="caption">Punch in</div><div class="val" id="statPin">—</div><div class="foot" id="statPinFoot">—</div></div>
+        <div class="stat-card pout"><div class="caption">Punch out</div><div class="val" id="statPout">—</div><div class="foot" id="statPoutFoot">—</div></div>
+        <div class="stat-card brk"><div class="caption">Break time</div><div class="val" id="statBrk">—</div><div class="foot" id="statBrkFoot">—</div></div>
+        <div class="stat-card eta"><div class="caption">Leave office by</div><div class="val" id="statEta">—</div><div class="foot" id="statEtaFoot">—</div></div>
+      </div>
 
       <div class="card">
         <div class="card-head">
@@ -747,7 +771,7 @@ async function refresh() {
     renderAll();
   } catch (err) { toast("Refresh failed: " + err.message, "err", 3500); }
 }
-function renderAll() { renderClock(); renderHero(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
+function renderAll() { renderClock(); renderHero(); renderStats(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 
 /* Theme toggle — the pre-paint script at the top already set data-theme.
    Here we only wire the icon + click handler; charts pick up colors via css() when rendered.
@@ -913,7 +937,89 @@ function renderHero() {
     heroLine.innerHTML = 'Punch in to finish by <b>' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
   }
 
+  renderHeroPbar(totalLiveMin, targetMin, remaining);
   renderHeroAlert(hero);
+}
+
+function renderHeroPbar(totalMin, targetMin, remaining) {
+  const wrap = document.getElementById("heroPbarWrap");
+  const bar = document.getElementById("heroPbar");
+  const labels = document.getElementById("heroPbarLabels");
+  const ticks = document.getElementById("heroPbarTicks");
+  if (targetMin === 0) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  const pct = Math.min(1, totalMin / targetMin);
+  bar.querySelector(".fill").style.width = (pct * 100).toFixed(1) + "%";
+  bar.classList.toggle("pos", pct >= 1);
+  labels.innerHTML =
+    '<span><b style="color:var(--fg)">' + fmtHM(totalMin) + '</b> worked</span>' +
+    '<span>' + (pct >= 1 ? '<b style="color:var(--pos)">target met</b>' : '<b style="color:var(--fg)">' + fmtHM(remaining) + '</b> remaining') + '</span>';
+  const hrs = Math.round(targetMin / 60);
+  const step = hrs >= 8 ? 2 : hrs >= 4 ? 1 : 1;
+  const parts = [];
+  for (let h = 0; h <= hrs; h += step) {
+    const leftPct = (h / hrs) * 100;
+    parts.push('<span style="left:' + leftPct.toFixed(1) + '%">' + h + 'h</span>');
+  }
+  ticks.innerHTML = parts.join('');
+}
+
+/* ─── Stat strip (Punch in / Punch out / Break / Leave-office ETA) ─── */
+function renderStats() {
+  const strip = document.getElementById("statStrip");
+  const rows = sortedTodaySessions();
+  if (D.todayNonWorking && rows.length === 0) { strip.hidden = true; return; }
+  strip.hidden = false;
+
+  const pin = document.getElementById("statPin");
+  const pinFoot = document.getElementById("statPinFoot");
+  const pout = document.getElementById("statPout");
+  const poutFoot = document.getElementById("statPoutFoot");
+  const brk = document.getElementById("statBrk");
+  const brkFoot = document.getElementById("statBrkFoot");
+  const eta = document.getElementById("statEta");
+  const etaFoot = document.getElementById("statEtaFoot");
+  const withAmPm = (str) => str.replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+
+  if (rows.length > 0) {
+    pin.innerHTML = withAmPm(fmtClock12(rows[0].punch_in));
+    pinFoot.textContent = rows.length === 1 ? 'only punch' : 'first of ' + rows.length;
+  } else { pin.textContent = '—'; pinFoot.textContent = 'no punches yet'; }
+
+  if (rows.length === 0) {
+    pout.textContent = '—'; poutFoot.textContent = 'no punches yet';
+  } else if (D.isPunchedIn) {
+    pout.innerHTML = 'still <span class="u">in</span>';
+    poutFoot.textContent = 'session ' + fmtHM(liveRunningMin());
+  } else {
+    pout.innerHTML = withAmPm(fmtClock12(rows[rows.length - 1].punch_out));
+    poutFoot.textContent = 'last of ' + rows.length;
+  }
+
+  const bMin = todayBreakMinutes();
+  const bH = Math.floor(bMin / 60); const bMm = bMin % 60;
+  brk.innerHTML = bH + '<span class="u">h</span> ' + String(bMm).padStart(2, '0') + '<span class="u">m</span>';
+  brkFoot.textContent = bMin === 0 ? 'no break taken' : rows.length > 1 ? 'across ' + (rows.length - 1) + ' gap' + (rows.length === 2 ? '' : 's') : 'while punched in';
+
+  const targetMin = D.todayTargetHours * 60;
+  const totalMin = D.closedTodayHours * 60 + liveRunningMin();
+  if (targetMin === 0) {
+    eta.textContent = '—'; etaFoot.textContent = 'no target today';
+  } else if (totalMin >= targetMin) {
+    eta.textContent = 'met'; etaFoot.textContent = fmtHM(totalMin - targetMin) + ' banked';
+  } else if (D.isPunchedIn) {
+    const e = new Date(D.etaEpochMs);
+    eta.innerHTML = withAmPm(fmtTime12(e.getHours(), e.getMinutes()));
+    etaFoot.textContent = 'if you stay punched in';
+  } else if (totalMin > 0) {
+    const e = new Date(D.etaEpochMs);
+    eta.innerHTML = withAmPm(fmtTime12(e.getHours(), e.getMinutes()));
+    etaFoot.textContent = 'if you resume now';
+  } else {
+    const e = new Date(Date.now() + targetMin * 60000);
+    eta.innerHTML = withAmPm(fmtTime12(e.getHours(), e.getMinutes()));
+    etaFoot.textContent = 'if you punch in now';
+  }
 }
 
 /* ─── Radial 24h day clock ─── */
@@ -1103,73 +1209,6 @@ function renderHeroAlert(hero) {
     subA.textContent = 'Approaching the ' + fmtHM(D.sessionMaxMin) + ' cap. A short break resets the counter.';
   } else {
     box.hidden = true;
-  }
-}
-
-/* ─── Stat strip (Punch in / Punch out / Break / Leave-office ETA) ─── */
-function renderStats() {
-  const strip = document.getElementById("statStrip");
-  const rows = sortedTodaySessions();
-  if (D.todayNonWorking && rows.length === 0) { strip.hidden = true; return; }
-  strip.hidden = false;
-
-  const pin = document.getElementById("statPin");
-  const pinFoot = document.getElementById("statPinFoot");
-  const pout = document.getElementById("statPout");
-  const poutFoot = document.getElementById("statPoutFoot");
-  const brk = document.getElementById("statBrk");
-  const brkFoot = document.getElementById("statBrkFoot");
-  const eta = document.getElementById("statEta");
-  const etaFoot = document.getElementById("statEtaFoot");
-
-  // Punch in — first session start
-  if (rows.length > 0) {
-    pin.innerHTML = fmtClock12(rows[0].punch_in).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
-    pinFoot.textContent = rows.length === 1 ? 'only punch' : 'first of ' + rows.length;
-  } else {
-    pin.textContent = '—';
-    pinFoot.textContent = 'no punches yet';
-  }
-
-  // Punch out — last session end (or still in)
-  if (rows.length === 0) {
-    pout.textContent = '—';
-    poutFoot.textContent = 'no punches yet';
-  } else if (D.isPunchedIn) {
-    pout.innerHTML = 'still <span class="u">in</span>';
-    poutFoot.textContent = 'session ' + fmtHM(liveRunningMin());
-  } else {
-    const last = rows[rows.length - 1];
-    pout.innerHTML = fmtClock12(last.punch_out).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
-    poutFoot.textContent = 'last of ' + rows.length;
-  }
-
-  // Break time
-  const bMin = todayBreakMinutes();
-  const bH = Math.floor(bMin / 60); const bMm = bMin % 60;
-  brk.innerHTML = '<span>' + bH + '</span><span class="u">h</span> <span>' + String(bMm).padStart(2, '0') + '</span><span class="u">m</span>';
-  brkFoot.textContent = bMin === 0 ? 'no break taken' : rows.length > 1 ? 'across ' + (rows.length - 1) + ' gap' + (rows.length === 2 ? '' : 's') : 'while punched in';
-
-  // Leave office by
-  const targetMin = D.todayTargetHours * 60;
-  const totalMin = D.closedTodayHours * 60 + liveRunningMin();
-  if (targetMin === 0) {
-    eta.textContent = '—'; etaFoot.textContent = 'no target today';
-  } else if (totalMin >= targetMin) {
-    eta.innerHTML = 'met';
-    etaFoot.textContent = fmtHM(totalMin - targetMin) + ' banked';
-  } else if (D.isPunchedIn) {
-    const e = new Date(D.etaEpochMs);
-    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
-    etaFoot.textContent = 'if you stay punched in';
-  } else if (totalMin > 0) {
-    const e = new Date(D.etaEpochMs);
-    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
-    etaFoot.textContent = 'if you resume now';
-  } else {
-    const e = new Date(Date.now() + targetMin * 60000);
-    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
-    etaFoot.textContent = 'if you punch in now';
   }
 }
 
@@ -1820,7 +1859,7 @@ setInterval(() => {
   }
 }, 1000);
 setInterval(() => {
-  renderClock(); renderHero();
+  renderClock(); renderHero(); renderStats();
   if (dPicker.value === D.today) renderSessions();
 }, 30_000);
 setInterval(refresh, 5 * 60_000);
