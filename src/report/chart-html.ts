@@ -187,7 +187,9 @@ export function renderDashboardHtml(data: DashboardData): string {
   .card-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 
   /* ─────── Hero (Today / Week / Month top band) ─────── */
-  .hero { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; }
+  .hero { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 12px; display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; }
+  .hero.no-ring { grid-template-columns: 1fr; }
+  .hero.no-ring.with-alert { grid-template-columns: 1fr auto; }
   .hero-left { min-width: 0; }
   .hero-pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid transparent; }
   .hero-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -227,10 +229,118 @@ export function renderDashboardHtml(data: DashboardData): string {
   .pbar.neg .fill { background: var(--neg); }
   .pbar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
+  /* ─────── Big-time typography (huge number + tiny unit letters) ─────── */
+  .bt { display: inline-flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -0.03em; }
+  .bt .n { font-size: 52px; font-weight: 700; color: var(--fg); }
+  .bt .u { font-size: 22px; font-weight: 500; color: var(--fg-muted); margin-left: -2px; margin-right: 6px; }
+  .bt .s { font-size: 22px; font-weight: 500; color: var(--fg-subtle); }
+  .bt .s-u { font-size: 14px; font-weight: 500; color: var(--fg-subtle); margin-left: -1px; }
+  .bt.tight .n { font-size: 32px; } .bt.tight .u { font-size: 16px; }
+  .caption { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; color: var(--fg-muted); }
+  .hero .caption { margin-bottom: 8px; }
+
+  /* ─────── Enhanced progress bar w/ gradient + tick labels ─────── */
+  .pbar.lg { height: 8px; }
+  .pbar.lg .fill { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, transparent), var(--accent)); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .pbar.lg.pos .fill { background: linear-gradient(90deg, color-mix(in srgb, var(--pos) 55%, transparent), var(--pos)); box-shadow: 0 0 10px color-mix(in srgb, var(--pos) 30%, transparent); }
+  .pbar-ticks { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg-subtle); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .pbar-ticks span { position: relative; }
+  .pbar-ticks span::before { content: ""; position: absolute; left: 50%; top: -10px; width: 1px; height: 4px; background: var(--border-strong); }
+  .pbar-ticks span:first-child::before { left: 0; }
+  .pbar-ticks span:last-child::before { left: auto; right: 0; }
+
+  /* ─────── Stat strip (4 cards under hero) ─────── */
+  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 14px 18px; position: relative; overflow: hidden; transition: var(--transition); }
+  .stat-card:hover { border-color: var(--border-strong); }
+  .stat-card::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--fg-muted); }
+  .stat-card.pin::before { background: var(--pos); }
+  .stat-card.pout::before { background: var(--neg); }
+  .stat-card.brk::before { background: #a78bfa; }
+  .stat-card.eta::before { background: var(--warn); }
+  .stat-card .caption { margin-bottom: 8px; }
+  .stat-card .val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.1; }
+  .stat-card .val .u { font-size: 13px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
+  .stat-card .foot { font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
+  .stat-card.pin .val { color: var(--pos); }
+  .stat-card.pout .val { color: var(--neg); }
+  .stat-card.brk .val { color: #a78bfa; }
+  .stat-card.eta .val { color: var(--warn); }
+
+  /* ─────── Session flow (narrative vertical timeline) ─────── */
+  .flow-list { position: relative; padding-left: 4px; }
+  .flow-list::before { content: ""; position: absolute; left: 9px; top: 18px; bottom: 18px; width: 1px; background: var(--border); }
+  .flow-item { display: grid; grid-template-columns: 20px 1fr auto; gap: 14px; padding: 12px 0; align-items: start; position: relative; }
+  .flow-item + .flow-item { border-top: 1px solid var(--border); }
+  .flow-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fg-muted); margin: 3px 0 0 5px; position: relative; z-index: 1; box-shadow: 0 0 0 3px var(--bg-elev); }
+  .flow-dot.work { background: var(--accent); }
+  .flow-dot.warn { background: var(--warn); }
+  .flow-dot.err { background: var(--neg); animation: livepulse 1.4s ease-in-out infinite; }
+  .flow-dot.done { background: var(--pos); }
+  .flow-dot.pending { background: transparent; border: 1.5px solid var(--fg-subtle); }
+  .flow-item .flow-body .caption { font-size: 11px; }
+  .flow-item .flow-body .sub { font-size: 13px; color: var(--fg); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .flow-item .flow-body .sub b { font-weight: 600; }
+  .flow-right { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.2; text-align: right; }
+  .flow-right .u { font-size: 12px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
+  .flow-right.accent { color: var(--accent); }
+  .flow-right.warn { color: var(--warn); }
+  .flow-right.err { color: var(--neg); }
+  .flow-right.done { color: var(--pos); }
+  .flow-right .foot { display: block; font-size: 10px; font-weight: 500; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+  .flow-item.highlight { background: var(--bg-hover); border-radius: var(--radius-sm); }
+  .flow-item.highlight + .flow-item { border-top-color: transparent; }
+  .flow-item[data-sidx] { cursor: default; }
+
+  /* ─────── Hero with side-alert on the right ─────── */
+  .hero.with-alert { grid-template-columns: auto 1fr auto; }
+  .hero-alert { max-width: 280px; background: var(--neg-bg); border: 1px solid var(--neg); border-radius: var(--radius); padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .hero-alert.warn { background: var(--warn-bg); border-color: var(--warn); }
+  .hero-alert .icon { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--neg); color: var(--neg); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0; }
+  .hero-alert.warn .icon { border-color: var(--warn); color: var(--warn); }
+  .hero-alert.crit .icon { animation: livepulse 1.4s ease-in-out infinite; }
+  .hero-alert-body .caption { color: inherit; }
+  .hero-alert-body .title { font-size: 13px; font-weight: 600; color: var(--fg); margin-top: 4px; line-height: 1.4; }
+  .hero-alert-body .title b.err { color: var(--neg); }
+  .hero-alert-body .sub { font-size: 12px; color: var(--fg-muted); margin-top: 4px; line-height: 1.4; }
+  .hero-alert.warn .hero-alert-body .caption { color: var(--warn); }
+  .hero-alert.crit .hero-alert-body .caption { color: var(--neg); }
+
+  /* ─────── Responsive breakpoints ─────── */
+  @media (max-width: 1024px) {
+    .content { padding: 20px; }
+    .stat-strip { gap: 8px; }
+    .hero.with-alert { grid-template-columns: auto 1fr; }
+    .hero-alert { grid-column: 1 / -1; max-width: none; margin-top: 8px; }
+    .bt .n { font-size: 44px; }
+    .bt .u { font-size: 20px; }
+  }
   @media (max-width: 720px) {
-    .hero { grid-template-columns: 1fr; text-align: left; padding: 18px 18px; }
-    .hero-line { font-size: 18px; }
-    .ring { width: 88px; height: 88px; align-self: flex-start; }
+    .app { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; grid-template-areas: "brand" "topbar" "content"; }
+    .sidebar { display: none; }
+    .content { padding: 14px; max-width: none; }
+    .hero { grid-template-columns: 1fr; text-align: left; padding: 18px; gap: 16px; }
+    .hero.with-alert { grid-template-columns: 1fr; }
+    .hero-alert { margin-top: 0; }
+    .ring { width: 84px; height: 84px; }
+    .ring svg { width: 84px; height: 84px; }
+    .stat-strip { grid-template-columns: repeat(2, 1fr); }
+    .stat-card .val { font-size: 18px; }
+    .bt .n { font-size: 36px; }
+    .bt .u { font-size: 16px; }
+    .flow-item { gap: 10px; }
+    .flow-right { font-size: 16px; }
+    .view-head { flex-direction: column; align-items: flex-start; }
+    .topbar { padding: 0 12px; gap: 4px; }
+    .user-chip { display: none; }
+    .btn.sm { padding: 0 8px; }
+  }
+  @media (max-width: 480px) {
+    .stat-strip { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: 1fr; }
+    .bt .n { font-size: 30px; }
+    .hero { padding: 14px; }
+    .topbar .btn.sm span, .topbar #themeToggle { font-size: 11px; }
   }
 
   /* Chart tab strip */
@@ -357,12 +467,6 @@ export function renderDashboardHtml(data: DashboardData): string {
   /* Footer */
   .foot { color: var(--fg-subtle); font-size: 11px; margin-top: 24px; text-align: right; }
 
-  /* Mobile — collapse sidebar to top row */
-  @media (max-width: 720px) {
-    .app { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; grid-template-areas: "brand" "topbar" "content"; }
-    .sidebar { display: none; }
-    .content { padding: 16px; }
-  }
 </style>
 </head>
 <body>
@@ -389,16 +493,7 @@ export function renderDashboardHtml(data: DashboardData): string {
         <div class="view-title"><h1>Today</h1><span class="sub" id="todayStamp"></span></div>
       </div>
 
-      <div id="alert" class="alert" hidden></div>
-
       <section class="hero" id="hero">
-        <div class="hero-left">
-          <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
-          <div class="hero-line" id="heroLine">—</div>
-          <div class="hero-sub" id="heroSub"></div>
-          <div class="pbar" id="heroPbar" hidden><div class="fill"></div></div>
-          <div class="pbar-labels" id="heroPbarLabels" hidden></div>
-        </div>
         <div class="ring" id="heroRing" hidden>
           <svg width="108" height="108" viewBox="0 0 108 108">
             <circle class="track" cx="54" cy="54" r="48"></circle>
@@ -406,11 +501,38 @@ export function renderDashboardHtml(data: DashboardData): string {
           </svg>
           <div class="ring-inner"><div class="n" id="ringN">—</div><div class="l" id="ringL">Session</div></div>
         </div>
+        <div class="hero-left">
+          <div class="caption" id="heroCap">Today</div>
+          <div class="bt" id="heroBt"></div>
+          <div class="hero-sub" id="heroSub"></div>
+          <div style="margin-top:12px">
+            <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
+          </div>
+        </div>
+        <div class="hero-alert" id="heroAlert" hidden>
+          <div class="icon" id="heroAlertIcon">!</div>
+          <div class="hero-alert-body">
+            <div class="caption" id="heroAlertCap">ALERT</div>
+            <div class="title" id="heroAlertTitle"></div>
+            <div class="sub" id="heroAlertSub"></div>
+          </div>
+        </div>
       </section>
+
+      <div class="pbar lg" id="heroPbar" hidden><div class="fill"></div></div>
+      <div class="pbar-labels" id="heroPbarLabels" hidden></div>
+      <div class="pbar-ticks" id="heroPbarTicks" hidden></div>
+
+      <div class="stat-strip" id="statStrip" hidden>
+        <div class="stat-card pin"><div class="caption">Punch in</div><div class="val" id="statPin">—</div><div class="foot" id="statPinFoot">—</div></div>
+        <div class="stat-card pout"><div class="caption">Punch out</div><div class="val" id="statPout">—</div><div class="foot" id="statPoutFoot">—</div></div>
+        <div class="stat-card brk"><div class="caption">Break time</div><div class="val" id="statBrk">—</div><div class="foot" id="statBrkFoot">—</div></div>
+        <div class="stat-card eta"><div class="caption">Leave office by</div><div class="val" id="statEta">—</div><div class="foot" id="statEtaFoot">—</div></div>
+      </div>
 
       <div class="card">
         <div class="card-head">
-          <div class="card-title"><h2>Sessions</h2><span class="card-sub" id="sLabel"></span></div>
+          <div class="card-title"><h2>Session flow</h2><span class="card-sub" id="sLabel"></span></div>
           <div class="nav">
             <button id="dPrev" aria-label="Previous day">‹</button>
             <input type="date" id="dPicker" />
@@ -419,7 +541,6 @@ export function renderDashboardHtml(data: DashboardData): string {
           </div>
         </div>
         <div class="summary" id="sSummary"></div>
-        <table id="sTable"><thead><tr><th>#</th><th>In</th><th>Out</th><th>Duration</th></tr></thead><tbody></tbody></table>
         <div class="timeline-wrap">
           <div class="timeline-axis">
             <span style="left:0%">0</span><span style="left:12.5%">3</span><span style="left:25%">6</span>
@@ -433,6 +554,7 @@ export function renderDashboardHtml(data: DashboardData): string {
             <span><i class="tl-break"></i>break</span>
           </div>
         </div>
+        <div class="flow-list" id="flowList"></div>
         <details class="form-block">
           <summary>Missed a punch? Add it manually</summary>
           <div class="fb-body">
@@ -463,19 +585,19 @@ export function renderDashboardHtml(data: DashboardData): string {
       </div>
 
       <section class="hero">
-        <div class="hero-left">
-          <span class="hero-pill idle" id="wHeroPill"><span class="dot"></span><span id="wHeroPillLabel">—</span></span>
-          <div class="hero-line" id="wHeroLine">—</div>
-          <div class="hero-sub" id="wHeroSub"></div>
-          <div class="pbar" id="wPbar"><div class="fill"></div></div>
-          <div class="pbar-labels" id="wPbarLabels"></div>
-        </div>
         <div class="ring" id="wRing">
           <svg width="108" height="108" viewBox="0 0 108 108">
             <circle class="track" cx="54" cy="54" r="48"></circle>
             <circle class="fill" cx="54" cy="54" r="48" stroke-dasharray="301.59" stroke-dashoffset="301.59"></circle>
           </svg>
           <div class="ring-inner"><div class="n" id="wRingN">—</div><div class="l">of target</div></div>
+        </div>
+        <div class="hero-left">
+          <span class="hero-pill idle" id="wHeroPill"><span class="dot"></span><span id="wHeroPillLabel">—</span></span>
+          <div class="hero-line" id="wHeroLine">—</div>
+          <div class="hero-sub" id="wHeroSub"></div>
+          <div class="pbar" id="wPbar"><div class="fill"></div></div>
+          <div class="pbar-labels" id="wPbarLabels"></div>
         </div>
       </section>
 
@@ -503,19 +625,19 @@ export function renderDashboardHtml(data: DashboardData): string {
       </div>
 
       <section class="hero">
-        <div class="hero-left">
-          <span class="hero-pill idle" id="mHeroPill"><span class="dot"></span><span id="mHeroPillLabel">—</span></span>
-          <div class="hero-line" id="mHeroLine">—</div>
-          <div class="hero-sub" id="mHeroSub"></div>
-          <div class="pbar" id="mPbar"><div class="fill"></div></div>
-          <div class="pbar-labels" id="mPbarLabels"></div>
-        </div>
         <div class="ring" id="mRing">
           <svg width="108" height="108" viewBox="0 0 108 108">
             <circle class="track" cx="54" cy="54" r="48"></circle>
             <circle class="fill" cx="54" cy="54" r="48" stroke-dasharray="301.59" stroke-dashoffset="301.59"></circle>
           </svg>
           <div class="ring-inner"><div class="n" id="mRingN">—</div><div class="l">of month</div></div>
+        </div>
+        <div class="hero-left">
+          <span class="hero-pill idle" id="mHeroPill"><span class="dot"></span><span id="mHeroPillLabel">—</span></span>
+          <div class="hero-line" id="mHeroLine">—</div>
+          <div class="hero-sub" id="mHeroSub"></div>
+          <div class="pbar" id="mPbar"><div class="fill"></div></div>
+          <div class="pbar-labels" id="mPbarLabels"></div>
         </div>
       </section>
 
@@ -610,7 +732,7 @@ async function refresh() {
     renderAll();
   } catch (err) { toast("Refresh failed: " + err.message, "err", 3500); }
 }
-function renderAll() { renderHero(); renderAlert(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
+function renderAll() { renderHero(); renderStats(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 
 /* Theme toggle — the pre-paint script at the top already set data-theme.
    Here we only wire the icon + click handler; charts pick up colors via css() when rendered.
@@ -643,10 +765,36 @@ if (location.hash) activateView(location.hash.slice(1));
 function fmtHours(h) { const s = h < 0 ? "-" : ""; const a = Math.abs(h); const hh = Math.floor(a); const mm = Math.round((a - hh) * 60); return s + hh + "h " + String(mm).padStart(2, "0") + "m"; }
 function fmtHM(m) { return fmtHours(m / 60); }
 function fmtSigned(h) { return (h >= 0 ? "+" : "") + fmtHours(h); }
+function fmtClock12(iso) {
+  if (!iso) return "—";
+  let h = +iso.slice(11, 13); const m = iso.slice(14, 16);
+  const ampm = h >= 12 ? "PM" : "AM"; h = h % 12; if (h === 0) h = 12;
+  return String(h).padStart(2, "0") + ":" + m + " " + ampm;
+}
+function fmtTime12(hh, mm) {
+  const ampm = hh >= 12 ? "PM" : "AM"; let h = hh % 12; if (h === 0) h = 12;
+  return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0") + " " + ampm;
+}
 function clock(iso) { return iso ? iso.slice(11, 16) : "—"; }
 function liveRunningMin() { return D.openPunchInMs ? Math.max(0, Math.round((Date.now() - D.openPunchInMs) / 60000)) : 0; }
+function liveRunningSec() { return D.openPunchInMs ? Math.max(0, Math.floor((Date.now() - D.openPunchInMs) / 1000)) : 0; }
 function liveTodayHours() { return +(D.closedTodayHours + liveRunningMin() / 60).toFixed(2); }
+function liveTodaySec() { return Math.floor(D.closedTodayHours * 3600) + liveRunningSec(); }
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* Big-time HTML: <span class="n">6</span><span class="u">h</span>... */
+function bigTimeHtml(totalSec, opts) {
+  opts = opts || {};
+  const showSec = opts.showSec === true;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const parts = [];
+  parts.push('<span class="n">' + h + '</span><span class="u">h</span>');
+  parts.push('<span class="n">' + String(m).padStart(2, "0") + '</span><span class="u">m</span>');
+  if (showSec) parts.push('<span class="s">' + String(s).padStart(2, "0") + '</span><span class="s-u">s</span>');
+  return parts.join('');
+}
 
 const dowFull = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const dowShort = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -683,96 +831,214 @@ function setPbar(pbarId, labelsId, pct, tone, leftLabel, rightLabel) {
 }
 
 /* ─── Today hero ─── */
+function sortedTodaySessions() {
+  return (D.sessions.byDate[D.today] || []).slice().sort((a, b) => a.punch_in.localeCompare(b.punch_in));
+}
+function todayBreakMinutes() { return computeBreakMin(sortedTodaySessions()); }
+
 function renderHero() {
   document.getElementById("todayStamp").textContent = niceDate(D.today);
+  const hero = document.getElementById("hero");
   const pill = document.getElementById("heroPill");
   const pillLabel = document.getElementById("heroPillLabel");
-  const line = document.getElementById("heroLine");
+  const cap = document.getElementById("heroCap");
+  const bt = document.getElementById("heroBt");
   const sub = document.getElementById("heroSub");
   const ring = document.getElementById("heroRing");
   const pbar = document.getElementById("heroPbar");
   const pbarLabels = document.getElementById("heroPbarLabels");
+  const pbarTicks = document.getElementById("heroPbarTicks");
 
   const running = liveRunningMin();
+  const runningSec = liveRunningSec();
   const totalLiveMin = D.closedTodayHours * 60 + running;
+  const totalLiveSec = liveTodaySec();
   const targetMin = D.todayTargetHours * 60;
   const remaining = Math.max(0, targetMin - totalLiveMin);
   const bal = D.monthDaysBalance;
 
+  hero.classList.remove("with-alert", "no-ring");
   pill.className = "hero-pill";
+
+  const setRingPct = (pct, tone, nText, lText) => {
+    ring.hidden = false;
+    setRing("heroRing", pct, tone);
+    document.getElementById("ringN").textContent = nText;
+    document.getElementById("ringL").textContent = lText;
+  };
 
   if (D.todayNonWorking) {
     pill.classList.add("off");
     pillLabel.textContent = D.todayIsSunday ? "Off — Sunday" : "Off — Leave day";
+    cap.textContent = (D.isPunchedIn || totalLiveMin > 0) ? "BONUS HOURS TODAY" : (D.todayIsSunday ? "SUNDAY" : "LEAVE DAY");
     if (D.isPunchedIn || totalLiveMin > 0) {
-      line.innerHTML = 'Bonus <span class="pos"><b>'+fmtHM(totalLiveMin)+'</b></span> today';
-      sub.innerHTML = D.isPunchedIn ? '<span>Session <b>'+fmtHM(running)+'</b></span>' : '<span>No active session</span>';
+      bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: D.isPunchedIn });
+      sub.innerHTML = D.isPunchedIn ? 'Session <b>'+fmtHM(running)+'</b> · counts as bonus' : 'Great work on your day off';
     } else {
-      line.innerHTML = 'Enjoy your day';
-      sub.innerHTML = '<span>'+(D.todayIsSunday ? 'Weekend' : 'On leave')+' — no target</span>';
+      bt.innerHTML = '<span class="n">Off</span>';
+      sub.innerHTML = 'No target today';
     }
     ring.hidden = true;
-    pbar.hidden = true; pbarLabels.hidden = true;
+    hero.classList.add("no-ring");
+    pbar.hidden = true; pbarLabels.hidden = true; pbarTicks.hidden = true;
   } else if (D.isPunchedIn) {
     pill.classList.add("working");
-    pillLabel.textContent = "Working";
-    const etaTxt = totalLiveMin >= targetMin
-      ? '<span class="pos">Target met</span> — <b>'+fmtHM(totalLiveMin - targetMin)+'</b> banked'
-      : (() => { const e = new Date(D.etaEpochMs); const eS = String(e.getHours()).padStart(2,"0")+':'+String(e.getMinutes()).padStart(2,"0"); return 'Finish by <span class="accent"><b>'+eS+'</b></span> — <b>'+fmtHM(remaining)+'</b> to go'; })();
-    line.innerHTML = etaTxt;
-    sub.innerHTML =
-      '<span>Session <b>'+fmtHM(running)+'</b></span>'+
-      '<span>Today <b>'+fmtHM(totalLiveMin)+'</b> of '+fmtHours(D.todayTargetHours)+'</span>'+
-      (bal !== 0 ? '<span>Month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b></span>' : '');
-    // Ring shows session progress toward cap
-    ring.hidden = false;
-    const capPct = running / D.sessionMaxMin;
-    const capTone = running >= D.sessionMaxMin ? "crit" : running >= D.sessionAlertMin ? "warn" : "";
-    setRing("heroRing", capPct, capTone);
-    document.getElementById("ringN").textContent = fmtHM(running);
-    document.getElementById("ringL").textContent = capTone === "crit" ? "OVER CAP" : "Session";
-    // Progress bar toward today target
+    pillLabel.textContent = "Punched in — counting live";
+    cap.textContent = "COMPLETED WORKING HOURS";
+    bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: true });
+    if (totalLiveMin >= targetMin) {
+      sub.innerHTML = '<b class="pos">Target met</b> · <b>'+fmtHM(totalLiveMin - targetMin)+'</b> banked · session <b>'+fmtHM(running)+'</b>';
+    } else {
+      const e = new Date(D.etaEpochMs);
+      sub.innerHTML = '<b>'+fmtHM(remaining)+'</b> left · finish by <b class="accent">'+fmtTime12(e.getHours(), e.getMinutes())+'</b> · session <b>'+fmtHM(running)+'</b>';
+    }
+    // Ring — completion percentage against 8h
     const donePct = targetMin === 0 ? 0 : totalLiveMin / targetMin;
-    const tone = donePct >= 1 ? "pos" : donePct >= 0.75 ? "" : "";
-    setPbar("heroPbar", "heroPbarLabels", donePct, tone, fmtHM(totalLiveMin)+' worked', fmtHM(remaining)+' to go');
+    setRingPct(donePct, donePct >= 1 ? "" : "", Math.round(donePct * 100) + "%", "OF " + Math.round(D.todayTargetHours) + "H");
+    // Progress bar with 0/2/4/6/8h ticks
+    const pctForBar = Math.min(1, totalLiveMin / (targetMin || 1));
+    setPbar("heroPbar", "heroPbarLabels", pctForBar, donePct >= 1 ? "pos" : "", fmtHM(totalLiveMin) + ' worked', fmtHM(remaining) + ' remaining');
+    renderPbarTicks(targetMin);
   } else if (totalLiveMin >= targetMin && totalLiveMin > 0) {
     pill.classList.add("done");
     pillLabel.textContent = "Done for today";
+    cap.textContent = "TARGET MET";
+    bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
     const overMin = totalLiveMin - targetMin;
-    line.innerHTML = '<span class="pos"><b>'+fmtHM(totalLiveMin)+'</b></span> today — <b>'+fmtHM(overMin)+'</b> banked';
-    sub.innerHTML = '<span>Target <b>'+fmtHours(D.todayTargetHours)+'</b> met</span>'+
-      (bal !== 0 ? '<span>Month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b></span>' : '');
-    ring.hidden = true;
-    setPbar("heroPbar", "heroPbarLabels", 1, "pos", fmtHM(totalLiveMin)+' worked', 'complete');
+    sub.innerHTML = '<b class="pos">'+fmtHM(overMin)+'</b> banked today' + (bal !== 0 ? ' · month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b>' : '');
+    setRingPct(1, "", "100%", "OF " + Math.round(D.todayTargetHours) + "H");
+    setPbar("heroPbar", "heroPbarLabels", 1, "pos", fmtHM(totalLiveMin) + ' worked', 'complete');
+    renderPbarTicks(targetMin);
   } else if (totalLiveMin > 0) {
     pill.classList.add("break");
     pillLabel.textContent = "On break";
+    cap.textContent = "COMPLETED WORKING HOURS";
+    bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
     const eta = new Date(D.etaEpochMs);
-    const eS = String(eta.getHours()).padStart(2,"0")+':'+String(eta.getMinutes()).padStart(2,"0");
-    line.innerHTML = '<b>'+fmtHM(remaining)+'</b> to go — resume to finish by <span class="accent"><b>'+eS+'</b></span>';
-    sub.innerHTML =
-      '<span>Today <b>'+fmtHM(totalLiveMin)+'</b> of '+fmtHours(D.todayTargetHours)+'</span>'+
-      (bal !== 0 ? '<span>Month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b></span>' : '');
-    ring.hidden = true;
-    setPbar("heroPbar", "heroPbarLabels", totalLiveMin / targetMin, "", fmtHM(totalLiveMin)+' worked', fmtHM(remaining)+' to go');
+    sub.innerHTML = '<b>'+fmtHM(remaining)+'</b> left · resume to finish by <b class="accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</b>';
+    const donePct = totalLiveMin / targetMin;
+    setRingPct(donePct, "", Math.round(donePct * 100) + "%", "OF " + Math.round(D.todayTargetHours) + "H");
+    setPbar("heroPbar", "heroPbarLabels", donePct, "", fmtHM(totalLiveMin) + ' worked', fmtHM(remaining) + ' remaining');
+    renderPbarTicks(targetMin);
   } else {
     pill.classList.add("idle");
     pillLabel.textContent = "Not started";
-    line.innerHTML = 'Punch in to finish by <span class="accent"><b>'+(() => { const e = new Date(Date.now() + targetMin * 60000); return String(e.getHours()).padStart(2,"0")+':'+String(e.getMinutes()).padStart(2,"0"); })()+'</b></span>';
-    sub.innerHTML = '<span>Target <b>'+fmtHours(D.todayTargetHours)+'</b></span>'+
-      (bal !== 0 ? '<span>Month <b class="'+(bal>0?"pos":"neg")+'">'+(bal>0?"+":"")+bal+'d</b></span>' : '');
-    ring.hidden = true;
-    pbar.hidden = true; pbarLabels.hidden = true;
+    cap.textContent = "TODAY'S TARGET";
+    bt.innerHTML = '<span class="n">' + Math.round(D.todayTargetHours) + '</span><span class="u">h</span>';
+    const eta = new Date(Date.now() + targetMin * 60000);
+    sub.innerHTML = 'Punch in to finish by <b class="accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</b>';
+    ring.hidden = true; hero.classList.add("no-ring");
+    pbar.hidden = true; pbarLabels.hidden = true; pbarTicks.hidden = true;
+  }
+
+  renderHeroAlert(hero);
+}
+
+function renderPbarTicks(targetMin) {
+  const el = document.getElementById("heroPbarTicks");
+  if (!el || targetMin === 0) { if (el) el.hidden = true; return; }
+  const hrs = Math.round(targetMin / 60);
+  const step = hrs >= 8 ? 2 : 1;
+  const parts = [];
+  for (let h = 0; h <= hrs; h += step) parts.push('<span>' + h + 'h</span>');
+  if (parts[parts.length - 1] !== '<span>' + hrs + 'h</span>') parts.push('<span>' + hrs + 'h</span>');
+  el.innerHTML = parts.join('');
+  el.hidden = false;
+}
+
+function renderHeroAlert(hero) {
+  const box = document.getElementById("heroAlert");
+  if (!D.isPunchedIn) { box.hidden = true; return; }
+  const m = liveRunningMin();
+  const cap = document.getElementById("heroAlertCap");
+  const title = document.getElementById("heroAlertTitle");
+  const subA = document.getElementById("heroAlertSub");
+  const icon = document.getElementById("heroAlertIcon");
+  box.classList.remove("warn", "crit");
+  icon.classList.remove("pulsing");
+  if (m >= D.sessionMaxMin) {
+    box.hidden = false; hero.classList.add("with-alert");
+    box.classList.add("crit"); icon.classList.add("pulsing");
+    cap.textContent = "BREAK NOW";
+    title.innerHTML = '<b class="err">'+fmtHM(m)+'</b> punched in continuously';
+    const alertTs = new Date(Date.now() - (m - D.sessionMaxMin) * 60000);
+    subA.textContent = fmtHM(D.sessionMaxMin) + ' cap crossed at ' + fmtTime12(alertTs.getHours(), alertTs.getMinutes()) + ' — punch out now; the counter restarts at your next punch-in.';
+  } else if (m >= D.sessionAlertMin) {
+    box.hidden = false; hero.classList.add("with-alert");
+    box.classList.add("warn");
+    cap.textContent = "TAKE A BREAK SOON";
+    title.innerHTML = '<b>'+fmtHM(m)+'</b> punched in continuously';
+    subA.textContent = 'Approaching the ' + fmtHM(D.sessionMaxMin) + ' cap. A short break resets the counter.';
+  } else {
+    box.hidden = true;
   }
 }
 
-function renderAlert() {
-  const el = document.getElementById("alert");
-  if (!D.isPunchedIn) { el.hidden = true; return; }
-  const m = liveRunningMin();
-  if (m >= D.sessionMaxMin) { el.hidden = false; el.className = "alert crit"; el.innerHTML = "Session <b>"+fmtHM(m)+"</b> — over "+fmtHM(D.sessionMaxMin)+" cap. Punch out now."; }
-  else if (m >= D.sessionAlertMin) { el.hidden = false; el.className = "alert warn"; el.innerHTML = "Session <b>"+fmtHM(m)+"</b> — approaching "+fmtHM(D.sessionMaxMin)+" cap."; }
-  else { el.hidden = true; }
+/* ─── Stat strip (Punch in / Punch out / Break / Leave-office ETA) ─── */
+function renderStats() {
+  const strip = document.getElementById("statStrip");
+  const rows = sortedTodaySessions();
+  if (D.todayNonWorking && rows.length === 0) { strip.hidden = true; return; }
+  strip.hidden = false;
+
+  const pin = document.getElementById("statPin");
+  const pinFoot = document.getElementById("statPinFoot");
+  const pout = document.getElementById("statPout");
+  const poutFoot = document.getElementById("statPoutFoot");
+  const brk = document.getElementById("statBrk");
+  const brkFoot = document.getElementById("statBrkFoot");
+  const eta = document.getElementById("statEta");
+  const etaFoot = document.getElementById("statEtaFoot");
+
+  // Punch in — first session start
+  if (rows.length > 0) {
+    pin.innerHTML = fmtClock12(rows[0].punch_in).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+    pinFoot.textContent = rows.length === 1 ? 'only punch' : 'first of ' + rows.length;
+  } else {
+    pin.textContent = '—';
+    pinFoot.textContent = 'no punches yet';
+  }
+
+  // Punch out — last session end (or still in)
+  if (rows.length === 0) {
+    pout.textContent = '—';
+    poutFoot.textContent = 'no punches yet';
+  } else if (D.isPunchedIn) {
+    pout.innerHTML = 'still <span class="u">in</span>';
+    poutFoot.textContent = 'session ' + fmtHM(liveRunningMin());
+  } else {
+    const last = rows[rows.length - 1];
+    pout.innerHTML = fmtClock12(last.punch_out).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+    poutFoot.textContent = 'last of ' + rows.length;
+  }
+
+  // Break time
+  const bMin = todayBreakMinutes();
+  const bH = Math.floor(bMin / 60); const bMm = bMin % 60;
+  brk.innerHTML = '<span>' + bH + '</span><span class="u">h</span> <span>' + String(bMm).padStart(2, '0') + '</span><span class="u">m</span>';
+  brkFoot.textContent = bMin === 0 ? 'no break taken' : rows.length > 1 ? 'across ' + (rows.length - 1) + ' gap' + (rows.length === 2 ? '' : 's') : 'while punched in';
+
+  // Leave office by
+  const targetMin = D.todayTargetHours * 60;
+  const totalMin = D.closedTodayHours * 60 + liveRunningMin();
+  if (targetMin === 0) {
+    eta.textContent = '—'; etaFoot.textContent = 'no target today';
+  } else if (totalMin >= targetMin) {
+    eta.innerHTML = 'met';
+    etaFoot.textContent = fmtHM(totalMin - targetMin) + ' banked';
+  } else if (D.isPunchedIn) {
+    const e = new Date(D.etaEpochMs);
+    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+    etaFoot.textContent = 'if you stay punched in';
+  } else if (totalMin > 0) {
+    const e = new Date(D.etaEpochMs);
+    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+    etaFoot.textContent = 'if you resume now';
+  } else {
+    const e = new Date(Date.now() + targetMin * 60000);
+    eta.innerHTML = fmtTime12(e.getHours(), e.getMinutes()).replace(/ (AM|PM)$/, '<span class="u"> $1</span>');
+    etaFoot.textContent = 'if you punch in now';
+  }
 }
 
 /* ─── Sync/Refresh buttons ─── */
@@ -1169,33 +1435,25 @@ function renderTimeline(date, rows) {
   });
 }
 function highlightSession(idx, on) {
-  document.querySelectorAll('#sTable tr[data-sidx="'+idx+'"]').forEach((el) => el.classList.toggle("highlight", on));
+  document.querySelectorAll('#flowList [data-sidx="'+idx+'"]').forEach((el) => el.classList.toggle("highlight", on));
   document.querySelectorAll('#timeline [data-sidx="'+idx+'"]').forEach((el) => el.classList.toggle("highlight", on));
+}
+function fmtHMcompact(min) {
+  const h = Math.floor(min / 60); const m = min % 60;
+  return '<span>'+h+'</span><span class="u">h</span> <span>'+String(m).padStart(2,"0")+'</span><span class="u">m</span>';
 }
 function renderSessions() {
   const date = dPicker.value;
-  const rows = (D.sessions.byDate[date] || []).slice();
+  const rows = (D.sessions.byDate[date] || []).slice().sort((a, b) => a.punch_in.localeCompare(b.punch_in));
   const dayIsSun = new Date(date+"T00:00:00").getDay() === 0;
   const isToday = date === D.today;
   document.getElementById("dToday").disabled = isToday;
   document.getElementById("sLabel").textContent = niceDateFull(date);
 
   let total = 0;
-  const tbody = document.querySelector("#sTable tbody");
-  if (rows.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="muted" style="text-align:center;padding:16px;color:var(--fg-muted)">No sessions</td></tr>'; }
-  else {
-    tbody.innerHTML = rows.map((s, i) => {
-      const openRow = s.punch_out === null && isToday;
-      const live = openRow ? liveRunningMin() : 0;
-      const dur = s.duration_minutes !== null ? s.duration_minutes : live;
-      total += dur;
-      const durLabel = s.duration_minutes !== null ? fmtHM(dur) : fmtHM(live)+' <span class="muted">(open)</span>';
-      return '<tr'+(openRow?' class="open"':'')+' data-sidx="'+i+'"><td>'+(i+1)+'</td><td>'+clock(s.punch_in)+'</td><td>'+clock(s.punch_out)+'</td><td>'+durLabel+'</td></tr>';
-    }).join("");
-    document.querySelectorAll("#sTable tr[data-sidx]").forEach((tr) => {
-      tr.addEventListener("mouseenter", () => highlightSession(+tr.getAttribute("data-sidx"), true));
-      tr.addEventListener("mouseleave", () => highlightSession(+tr.getAttribute("data-sidx"), false));
-    });
+  for (const s of rows) {
+    if (s.duration_minutes !== null) total += s.duration_minutes;
+    else if (s.punch_out === null && isToday) total += liveRunningMin();
   }
   const target = dayIsSun ? 0 : (D.todayTargetHours * 60);
   const bal = total - target;
@@ -1208,7 +1466,109 @@ function renderSessions() {
   if (dayIsSun) parts.push('<span class="sep">·</span>', '<span class="muted">Sunday · no target</span>');
   else parts.push('<span class="sep">·</span>', '<span>Target <b>'+fmtHM(target)+'</b></span>', '<span class="sep">·</span>', '<span class="'+(bal>=0?"pos":"neg")+'">Balance <b>'+(bal>=0?"+":"")+fmtHM(bal)+'</b></span>');
   document.getElementById("sSummary").innerHTML = parts.join("");
+
   renderTimeline(date, rows);
+  renderFlow(date, rows, isToday);
+}
+
+/* Vertical session flow — each session, break gap, and (for today) expected leave time */
+function renderFlow(date, rows, isToday) {
+  const el = document.getElementById("flowList");
+  if (rows.length === 0) {
+    el.innerHTML = '<div class="flow-item"><div class="flow-dot pending"></div><div class="flow-body"><div class="caption">No sessions</div><div class="sub muted">Nothing to show for this day.</div></div><div></div></div>';
+    return;
+  }
+  const items = [];
+  for (let i = 0; i < rows.length; i++) {
+    const s = rows[i];
+    const isOpen = s.punch_out === null && isToday;
+    const live = isOpen ? liveRunningMin() : 0;
+    const dur = s.duration_minutes !== null ? s.duration_minutes : live;
+    const dotCls = isOpen ? (live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "work") : "done";
+    const rightCls = isOpen ? (live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "accent") : "";
+    const outClock = isOpen ? '<b class="warn">running</b>' : '<b>'+fmtClock12(s.punch_out)+'</b>';
+    items.push(
+      '<div class="flow-item" data-sidx="'+i+'">'+
+        '<div class="flow-dot '+dotCls+'"></div>'+
+        '<div class="flow-body">'+
+          '<div class="caption">SESSION ' + (i + 1) + (isOpen ? ' · PUNCHED IN' : ' · COMPLETED') + '</div>'+
+          '<div class="sub"><b>'+fmtClock12(s.punch_in)+'</b> → ' + outClock + '</div>'+
+        '</div>'+
+        '<div class="flow-right '+rightCls+'">'+fmtHMcompact(dur)+'</div>'+
+      '</div>'
+    );
+    // Break gap after this session
+    if (i + 1 < rows.length && s.punch_out) {
+      const next = rows[i + 1];
+      const gapMs = Date.parse(next.punch_in) - Date.parse(s.punch_out);
+      if (gapMs > 0) {
+        const gapMin = Math.round(gapMs / 60000);
+        items.push(
+          '<div class="flow-item">'+
+            '<div class="flow-dot"></div>'+
+            '<div class="flow-body">'+
+              '<div class="caption">BREAK</div>'+
+              '<div class="sub muted"><b>'+fmtClock12(s.punch_out)+'</b> → <b>'+fmtClock12(next.punch_in)+'</b></div>'+
+            '</div>'+
+            '<div class="flow-right"><span class="muted">'+fmtHMcompact(gapMin)+'</span></div>'+
+          '</div>'
+        );
+      }
+    }
+  }
+  // Today only: append the "expected leave time" or "target met"
+  if (isToday) {
+    const runMin = liveRunningMin();
+    const totalMin = D.closedTodayHours * 60 + runMin;
+    const targetMin = D.todayTargetHours * 60;
+    if (targetMin > 0) {
+      if (totalMin >= targetMin) {
+        const overMin = totalMin - targetMin;
+        items.push(
+          '<div class="flow-item">'+
+            '<div class="flow-dot done"></div>'+
+            '<div class="flow-body">'+
+              '<div class="caption">TARGET MET</div>'+
+              '<div class="sub"><b>'+fmtHM(overMin)+'</b> banked today</div>'+
+            '</div>'+
+            '<div class="flow-right done">✓</div>'+
+          '</div>'
+        );
+      } else if (D.isPunchedIn && runMin >= D.sessionMaxMin) {
+        // Break overdue
+        const overCap = runMin - D.sessionMaxMin;
+        items.push(
+          '<div class="flow-item">'+
+            '<div class="flow-dot err"></div>'+
+            '<div class="flow-body">'+
+              '<div class="caption">BREAK OVERDUE</div>'+
+              '<div class="sub"><b>'+fmtHM(runMin)+'</b> punched in · <b>'+fmtHM(overCap)+'</b> over cap</div>'+
+            '</div>'+
+            '<div class="flow-right err">now</div>'+
+          '</div>'
+        );
+      } else {
+        // Expected leave
+        const eta = new Date(D.etaEpochMs);
+        const remaining = Math.max(0, targetMin - totalMin);
+        items.push(
+          '<div class="flow-item">'+
+            '<div class="flow-dot pending"></div>'+
+            '<div class="flow-body">'+
+              '<div class="caption">EXPECTED LEAVE TIME</div>'+
+              '<div class="sub muted"><b>'+fmtHM(remaining)+'</b> still to go</div>'+
+            '</div>'+
+            '<div class="flow-right accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</div>'+
+          '</div>'
+        );
+      }
+    }
+  }
+  el.innerHTML = items.join("");
+  el.querySelectorAll('.flow-item[data-sidx]').forEach((row) => {
+    row.addEventListener("mouseenter", () => highlightSession(+row.getAttribute("data-sidx"), true));
+    row.addEventListener("mouseleave", () => highlightSession(+row.getAttribute("data-sidx"), false));
+  });
 }
 
 /* ─── Heatmap ─── */
@@ -1315,9 +1675,22 @@ function renderFooter() {
   document.getElementById("footInfo").textContent = bits.join(" · ");
 }
 
-/* Initial render + tick */
+/* Initial render + tick.
+   1s: update only the big-time seconds display (cheap, keeps the "live" feel).
+   5s: re-render hero, stats, and (if viewing today) the flow list — minute-level updates.
+   5min: full refresh from the API. */
 renderAll();
-setInterval(() => { renderHero(); renderAlert(); if (dPicker.value === D.today) renderSessions(); }, 5_000);
+setInterval(() => {
+  if (!D.isPunchedIn) return;
+  const bt = document.getElementById("heroBt");
+  if (bt && document.querySelector(".view.active[data-view=today]")) {
+    bt.innerHTML = bigTimeHtml(liveTodaySec(), { showSec: true });
+  }
+}, 1000);
+setInterval(() => {
+  renderHero(); renderStats();
+  if (dPicker.value === D.today) renderSessions();
+}, 5_000);
 setInterval(refresh, 5 * 60_000);
 </script>
 </body>
