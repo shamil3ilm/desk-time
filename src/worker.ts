@@ -59,8 +59,58 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+// Shared fan-out — called by scheduled() (Cloudflare cron) and by /internal/trigger-all
+// (external cron like GitHub Actions). Same logic either way. Returns dispatched count.
+async function fanOutToAllUsers(env: Env, ctx: ExecutionContext, source: string): Promise<{ users: number; mode: string }> {
+  const t0 = Date.now();
+  const userIds = await listActiveUserIds(env.DB);
+  const mode = (env.POLL_DISPATCH_MODE || "self-fetch").toLowerCase();
+  console.log(`fan-out start (source=${source}) — ${userIds.length} active users, mode=${mode}`);
+
+  if (mode === "queue" && env.POLL_QUEUE) {
+    if (userIds.length === 0) return { users: 0, mode };
+    const triggeredAt = new Date().toISOString();
+    await env.POLL_QUEUE.sendBatch(
+      userIds.map((id) => ({ body: { user_id: id, triggered_at: triggeredAt, trigger: "cron" as const } })),
+    );
+    console.log(`fan-out queue enqueue took ${Date.now() - t0}ms`);
+    return { users: userIds.length, mode };
+  }
+  if (mode === "queue" && !env.POLL_QUEUE) {
+    console.warn("POLL_DISPATCH_MODE=queue but POLL_QUEUE binding is missing; falling back to self-fetch");
+  }
+
+  const secret = env.INTERNAL_SYNC_SECRET;
+  const appUrl = env.APP_URL;
+  if (!secret || !appUrl) {
+    console.warn("INTERNAL_SYNC_SECRET or APP_URL not set — falling back to in-process poll (limited to ~7 users)");
+    const config = getConfig(env);
+    for (const userId of userIds) {
+      ctx.waitUntil(
+        runPoll(env.DB, config, userId, { syncFirst: true }).catch((err) =>
+          console.error(`in-process syncUser ${userId} failed:`, err instanceof Error ? err.message : String(err)),
+        ),
+      );
+    }
+    return { users: userIds.length, mode: "in-process" };
+  }
+  for (const userId of userIds) {
+    ctx.waitUntil(
+      fetch(`${appUrl.replace(/\/$/, "")}/internal/sync-user`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-internal-secret": secret },
+        body: JSON.stringify({ user_id: userId }),
+      }).catch((err) =>
+        console.error(`fan-out to user ${userId} failed:`, err instanceof Error ? err.message : String(err)),
+      ),
+    );
+  }
+  console.log(`fan-out self-fetch dispatch took ${Date.now() - t0}ms`);
+  return { users: userIds.length, mode: "self-fetch" };
+}
+
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const key = `${request.method} ${url.pathname}`;
 
@@ -82,6 +132,17 @@ export default {
         case "POST /internal/sync-user":
           // Auth via X-Internal-Secret header; called by scheduled() fan-out.
           return internalSync(request, env);
+        case "POST /internal/trigger-all": {
+          // External-cron fan-out entry point (GitHub Actions, uptime pinger, etc).
+          // Same behavior as scheduled() but reachable via HTTP.
+          const secret = env.INTERNAL_SYNC_SECRET;
+          if (!secret) return json({ ok: false, error: "INTERNAL_SYNC_SECRET not set" }, 500);
+          if (request.headers.get("x-internal-secret") !== secret) {
+            return json({ ok: false, error: "unauthorized" }, 401);
+          }
+          const result = await fanOutToAllUsers(env, ctx, "http-trigger");
+          return json({ ok: true, ...result });
+        }
       }
 
       // Authenticated routes ──────────────────────────────────────
@@ -113,60 +174,11 @@ export default {
     }
   },
 
-  // Cron Triggers — fan out per user. Dispatch mode chosen at runtime by
-  // POLL_DISPATCH_MODE var: "self-fetch" (default, no infra) or "queue"
-  // (requires POLL_QUEUE binding + Cloudflare Queue provisioned).
+  // Cron Triggers — fan out per user via the shared helper above.
+  // If Cloudflare cron is unreliable, /internal/trigger-all provides the same
+  // behavior for an external cron (GitHub Actions) to call.
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const userIds = await listActiveUserIds(env.DB);
-    const mode = (env.POLL_DISPATCH_MODE || "self-fetch").toLowerCase();
-    console.log(`cron fired — ${userIds.length} active users, mode=${mode}`);
-
-    // Queue mode: send one message per user, consumer handles them in own invocations.
-    // Scales to thousands; auto-retries with DLQ. Preferred once user count > ~40.
-    if (mode === "queue" && env.POLL_QUEUE) {
-      if (userIds.length === 0) return;
-      const triggeredAt = new Date().toISOString();
-      await env.POLL_QUEUE.sendBatch(
-        userIds.map((id) => ({ body: { user_id: id, triggered_at: triggeredAt, trigger: "cron" as const } })),
-      );
-      return;
-    }
-    if (mode === "queue" && !env.POLL_QUEUE) {
-      console.warn("POLL_DISPATCH_MODE=queue but POLL_QUEUE binding is missing; falling back to self-fetch");
-    }
-
-    // Self-fetch mode: each user gets a fresh Worker invocation via HTTP to /internal/sync-user.
-    // Cron event uses only 1 (D1) + N (fetches) subrequests; each per-user invocation has its
-    // own 50-subrequest budget. Free-tier ceiling ~48 users per cron.
-    const secret = env.INTERNAL_SYNC_SECRET;
-    const appUrl = env.APP_URL;
-    if (!secret || !appUrl) {
-      // Last-resort fallback: in-process. Subrequests shared → breaks at ~7 users.
-      console.warn("INTERNAL_SYNC_SECRET or APP_URL not set — falling back to in-process poll (limited to ~7 users)");
-      const config = getConfig(env);
-      for (const userId of userIds) {
-        ctx.waitUntil(
-          runPoll(env.DB, config, userId, { syncFirst: true }).catch((err) =>
-            console.error(`cron in-process syncUser ${userId} failed:`, err instanceof Error ? err.message : String(err)),
-          ),
-        );
-      }
-      return;
-    }
-    for (const userId of userIds) {
-      ctx.waitUntil(
-        fetch(`${appUrl.replace(/\/$/, "")}/internal/sync-user`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-internal-secret": secret,
-          },
-          body: JSON.stringify({ user_id: userId }),
-        }).catch((err) =>
-          console.error(`cron fan-out to user ${userId} failed:`, err instanceof Error ? err.message : String(err)),
-        ),
-      );
-    }
+    await fanOutToAllUsers(env, ctx, "cron");
   },
 
   // Queue consumer — invoked by Cloudflare when queue mode is enabled and messages arrive.

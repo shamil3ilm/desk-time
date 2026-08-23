@@ -1,0 +1,79 @@
+name: Hourly desk-time sync
+
+# Cloudflare Cron Triggers on the free tier proved unreliable — silently
+# stopped firing multiple days in a row, silently missed the day-end catch
+# (which lost sessions when IST rolled to the next day). GitHub Actions
+# cron isn't perfect either but it's an order of magnitude more reliable,
+# and it moves the trigger off the Worker so a Cloudflare-side outage
+# doesn't kill sync.
+#
+# The Worker's own `scheduled()` handler is kept as a backup — if
+# Cloudflare cron ever wakes back up, it just fires the same fan-out and
+# the ATS `already in progress` handling swallows the duplicate.
+
+on:
+  schedule:
+    # 09:00–22:00 IST (UTC+05:30) = 03:30–16:30 UTC, hourly at :30.
+    # 14 fires/day. Matches the wrangler.toml cron so behaviour is
+    # identical to what Cloudflare *should* be doing.
+    - cron: '30 3-16 * * *'
+  # Allow ad-hoc runs from the Actions tab.
+  workflow_dispatch: {}
+
+# Never queue two triggers on top of each other. If a run is still going
+# (e.g. slow ATS response), skip the new one rather than pile up.
+concurrency:
+  group: hourly-sync
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /internal/trigger-all
+        env:
+          INTERNAL_SYNC_SECRET: ${{ secrets.INTERNAL_SYNC_SECRET }}
+          APP_URL: https://desk-time.letmeknow.workers.dev
+        run: |
+          set -eo pipefail
+
+          if [ -z "$INTERNAL_SYNC_SECRET" ]; then
+            echo "::error::Repo secret INTERNAL_SYNC_SECRET is not set."
+            echo "Set it in Settings → Secrets and variables → Actions,"
+            echo "using the same value as the Cloudflare Worker's secret."
+            exit 1
+          fi
+
+          # -w "\n%{http_code}" appends the HTTP status as the last line.
+          # --fail-with-body would exit on non-2xx but we want to log body.
+          # 5xx retries: two attempts, exponential-ish backoff.
+          for attempt in 1 2 3; do
+            echo "→ attempt $attempt"
+            RESP=$(curl -sS --max-time 60 \
+              -w "\n%{http_code}" \
+              -X POST "$APP_URL/internal/trigger-all" \
+              -H "x-internal-secret: $INTERNAL_SYNC_SECRET" \
+              -H "content-type: application/json") || {
+                echo "curl failed (network); retrying"
+                sleep $((attempt * 5))
+                continue
+              }
+            BODY=$(printf '%s' "$RESP" | sed '$d')
+            STATUS=$(printf '%s' "$RESP" | tail -n 1)
+            echo "status=$STATUS"
+            echo "body=$BODY"
+            if [ "$STATUS" = "200" ]; then
+              echo "✓ fan-out dispatched"
+              exit 0
+            fi
+            if [ "$STATUS" = "401" ]; then
+              echo "::error::401 unauthorized — repo secret does not match Worker secret."
+              exit 1
+            fi
+            echo "non-200; retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+
+          echo "::error::All 3 attempts failed."
+          exit 1
