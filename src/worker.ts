@@ -133,15 +133,33 @@ export default {
           // Auth via X-Internal-Secret header; called by scheduled() fan-out.
           return internalSync(request, env);
         case "POST /internal/trigger-all": {
-          // External-cron fan-out entry point (GitHub Actions, uptime pinger, etc).
-          // Same behavior as scheduled() but reachable via HTTP.
+          // External-cron fan-out (GitHub Actions, uptime pingers). Runs runPoll
+          // in-process for every active user and awaits — the response body then
+          // reports per-user outcome so the caller has full visibility.
+          //
+          // In-process (not self-fetch) because self-fetch to our own workers.dev
+          // URL from an HTTP handler was silently no-op'ing (each user completed
+          // in <1s with no poll_log entry). In-process shares the invocation's
+          // 50-subrequest budget: ~7 subreqs per runPoll → good up to ~7 users.
+          // Beyond that: switch POLL_DISPATCH_MODE to "queue".
           const secret = env.INTERNAL_SYNC_SECRET;
           if (!secret) return json({ ok: false, error: "INTERNAL_SYNC_SECRET not set" }, 500);
           if (request.headers.get("x-internal-secret") !== secret) {
             return json({ ok: false, error: "unauthorized" }, 401);
           }
-          const result = await fanOutToAllUsers(env, ctx, "http-trigger");
-          return json({ ok: true, ...result });
+          const t0 = Date.now();
+          const userIds = await listActiveUserIds(env.DB);
+          console.log(`trigger-all (http) — ${userIds.length} users, in-process`);
+          const config = getConfig(env);
+          const results = await Promise.all(userIds.map(async (userId) => {
+            try {
+              const r = await runPoll(env.DB, config, userId, { syncFirst: true });
+              return { user_id: userId, ok: r.ok, message: r.message, sessions: r.sessions, synced: r.synced };
+            } catch (err) {
+              return { user_id: userId, ok: false, error: err instanceof Error ? err.message : String(err) };
+            }
+          }));
+          return json({ ok: true, mode: "in-process", users: userIds.length, elapsed_ms: Date.now() - t0, results });
         }
       }
 
