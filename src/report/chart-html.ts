@@ -200,7 +200,10 @@ export function renderDashboardHtml(data: DashboardData): string {
   .hero-pill.idle { background: var(--bg); color: var(--fg-muted); border-color: var(--border); }
   .hero-pill.off { background: var(--bg); color: var(--fg-muted); border-color: var(--border); }
   @keyframes livepulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
-  .hero-line { font-size: 22px; font-weight: 600; margin-top: 10px; letter-spacing: -0.015em; line-height: 1.25; font-variant-numeric: tabular-nums; color: var(--fg); }
+  .hero-left .caption { margin-bottom: 6px; }
+  .hero-left .bt { margin-bottom: 12px; }
+  .hero-line { font-size: 15px; font-weight: 500; margin-bottom: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+  .hero-line b { color: var(--fg); font-weight: 600; }
   .hero-line b { font-weight: 700; }
   .hero-line .accent { color: var(--accent); }
   .hero-line .pos { color: var(--pos); }
@@ -255,7 +258,7 @@ export function renderDashboardHtml(data: DashboardData): string {
   .dayclock .track { fill: none; stroke: var(--border); stroke-width: 14; }
   .dayclock .tick { stroke: var(--fg-subtle); stroke-width: 1; opacity: 0.5; }
   .dayclock .tick.major { stroke: var(--fg-muted); stroke-width: 1.5; opacity: 1; }
-  .dayclock .hour-label { fill: var(--fg-subtle); font-size: 10px; font-weight: 600; text-anchor: middle; dominant-baseline: central; font-family: var(--font); }
+  .dayclock .hour-label { fill: var(--fg-subtle); font-size: 9px; font-weight: 500; text-anchor: middle; dominant-baseline: central; font-family: var(--font); opacity: 0.55; }
   .dayclock .arc { fill: none; stroke-width: 14; stroke-linecap: butt; transition: stroke 200ms, opacity 200ms; }
   .dayclock .arc.done { stroke: var(--accent); }
   .dayclock .arc.open { stroke: var(--accent); filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 55%, transparent)); }
@@ -270,16 +273,11 @@ export function renderDashboardHtml(data: DashboardData): string {
   .dayclock .marker.done { fill: var(--pos); }
   @keyframes cliveblink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-  .dayclock-center { position: absolute; inset: 40px 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; gap: 4px; }
-  .dayclock-center .caption { font-size: 9px; letter-spacing: 0.1em; }
-  .dayclock-center .bt { justify-content: center; align-items: baseline; }
-  .dayclock-center .bt .n { font-size: 36px; }
-  .dayclock-center .bt .u { font-size: 15px; margin-right: 4px; }
-  .dayclock-center .bt .s { font-size: 15px; }
-  .dayclock-center .bt .s-u { font-size: 10px; }
-  .dayclock-center .sub { font-size: 11px; color: var(--fg-muted); line-height: 1.4; margin-top: 2px; }
-  .dayclock-center .sub b { color: var(--fg); font-weight: 600; }
-  .dayclock-center .sub .accent { color: var(--accent); }
+  /* Clock center: intentionally minimal — just a small % indicator. The clock arcs
+     are the primary visual; numbers live in the hero-left column outside. */
+  .dayclock-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; gap: 2px; }
+  .dayclock-center .pct { font-size: 24px; font-weight: 700; color: var(--fg-muted); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; }
+  .dayclock-center .pct-label { font-size: 9px; font-weight: 600; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: 0.1em; }
 
   /* ─────── Compact stat chips (inline pills replacing the 4-card strip) ─────── */
   .stat-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 14px; }
@@ -540,15 +538,15 @@ export function renderDashboardHtml(data: DashboardData): string {
             <circle class="hand-dot" cx="120" cy="120" r="3.5"/>
           </svg>
           <div class="dayclock-center">
-            <div class="caption" id="heroCap">Today</div>
-            <div class="bt" id="heroBt"></div>
-            <div class="sub" id="heroSub"></div>
+            <div class="pct" id="clockPct">—</div>
+            <div class="pct-label" id="clockPctLabel">of target</div>
           </div>
         </div>
         <div class="hero-left">
-          <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
+          <div class="caption" id="heroCap">TODAY</div>
+          <div class="bt" id="heroBt"></div>
           <div class="hero-line" id="heroLine"></div>
-          <div class="stat-chips" id="statChips"></div>
+          <span class="hero-pill" id="heroPill"><span class="dot"></span><span id="heroPillLabel">—</span></span>
         </div>
         <div class="hero-alert" id="heroAlert" hidden>
           <div class="icon" id="heroAlertIcon">!</div>
@@ -749,7 +747,7 @@ async function refresh() {
     renderAll();
   } catch (err) { toast("Refresh failed: " + err.message, "err", 3500); }
 }
-function renderAll() { renderClock(); renderHero(); renderChips(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
+function renderAll() { renderClock(); renderHero(); renderWeek(); renderMonth(); renderSessions(); renderHeatmap(); renderFooter(); }
 
 /* Theme toggle — the pre-paint script at the top already set data-theme.
    Here we only wire the icon + click handler; charts pick up colors via css() when rendered.
@@ -860,7 +858,6 @@ function renderHero() {
   const pillLabel = document.getElementById("heroPillLabel");
   const cap = document.getElementById("heroCap");
   const bt = document.getElementById("heroBt");
-  const sub = document.getElementById("heroSub");
   const heroLine = document.getElementById("heroLine");
 
   const running = liveRunningMin();
@@ -874,53 +871,46 @@ function renderHero() {
 
   if (D.todayNonWorking) {
     pill.classList.add("off");
-    pillLabel.textContent = D.todayIsSunday ? "Off — Sunday" : "Off — Leave day";
-    cap.textContent = (D.isPunchedIn || totalLiveMin > 0) ? "BONUS TODAY" : "TODAY";
+    pillLabel.textContent = D.todayIsSunday ? "Sunday off" : "On leave";
+    cap.textContent = (D.isPunchedIn || totalLiveMin > 0) ? "BONUS HOURS" : "TODAY";
     if (D.isPunchedIn || totalLiveMin > 0) {
       bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: D.isPunchedIn });
-      sub.innerHTML = D.isPunchedIn ? 'session <b>' + fmtHM(running) + '</b>' : 'punched out';
-      heroLine.innerHTML = 'Every hour is bonus — no target today.';
+      heroLine.innerHTML = 'Every hour is bonus today.';
     } else {
-      bt.innerHTML = '<span class="n">off</span>';
-      sub.innerHTML = D.todayIsSunday ? 'weekend' : 'on leave';
-      heroLine.innerHTML = 'Enjoy your day off.';
+      bt.innerHTML = '<span class="n">Off</span>';
+      heroLine.innerHTML = 'No target — enjoy your day.';
     }
   } else if (D.isPunchedIn) {
     pill.classList.add("working");
-    pillLabel.textContent = "Punched in — counting live";
-    cap.textContent = "COMPLETED";
+    pillLabel.textContent = "Punched in";
+    cap.textContent = "WORKED TODAY";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: true });
-    sub.innerHTML = 'of <b>' + fmtHours(D.todayTargetHours) + '</b>';
     if (totalLiveMin >= targetMin) {
-      heroLine.innerHTML = '<b class="pos">Target met</b> · <b>' + fmtHM(totalLiveMin - targetMin) + '</b> banked · session <b>' + fmtHM(running) + '</b>';
+      heroLine.innerHTML = '<b class="pos">Target met</b> — you can leave anytime.';
     } else {
       const e = new Date(D.etaEpochMs);
-      heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go · finish by <b class="accent">' + fmtTime12(e.getHours(), e.getMinutes()) + '</b>';
+      heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go — finish by <b>' + fmtTime12(e.getHours(), e.getMinutes()) + '</b>';
     }
   } else if (totalLiveMin >= targetMin && totalLiveMin > 0) {
     pill.classList.add("done");
     pillLabel.textContent = "Done for today";
-    cap.textContent = "TARGET MET";
+    cap.textContent = "WORKED TODAY";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
-    const overMin = totalLiveMin - targetMin;
-    sub.innerHTML = '<b class="accent">' + fmtHM(overMin) + '</b> banked';
-    heroLine.innerHTML = 'Target of <b>' + fmtHours(D.todayTargetHours) + '</b> reached · <b class="pos">' + fmtHM(overMin) + '</b> in the bank.';
+    heroLine.innerHTML = '<b class="pos">' + fmtHM(totalLiveMin - targetMin) + '</b> banked over the ' + fmtHours(D.todayTargetHours) + ' target.';
   } else if (totalLiveMin > 0) {
     pill.classList.add("break");
     pillLabel.textContent = "On break";
-    cap.textContent = "COMPLETED";
+    cap.textContent = "WORKED SO FAR";
     bt.innerHTML = bigTimeHtml(totalLiveSec, { showSec: false });
-    sub.innerHTML = 'of <b>' + fmtHours(D.todayTargetHours) + '</b>';
     const eta = new Date(D.etaEpochMs);
-    heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go · resume to finish by <b class="accent">' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
+    heroLine.innerHTML = '<b>' + fmtHM(remaining) + '</b> to go — resume to finish by <b>' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
   } else {
     pill.classList.add("idle");
     pillLabel.textContent = "Not started";
-    cap.textContent = "TARGET";
+    cap.textContent = "TODAY'S TARGET";
     bt.innerHTML = '<span class="n">' + Math.round(D.todayTargetHours) + '</span><span class="u">h</span>';
-    sub.innerHTML = 'ahead of you';
     const eta = new Date(Date.now() + targetMin * 60000);
-    heroLine.innerHTML = 'Punch in to finish by <b class="accent">' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
+    heroLine.innerHTML = 'Punch in to finish by <b>' + fmtTime12(eta.getHours(), eta.getMinutes()) + '</b>';
   }
 
   renderHeroAlert(hero);
@@ -968,9 +958,25 @@ function renderClock() {
   renderClockTicks();
   const arcs = document.getElementById("clockArcs");
   const markers = document.getElementById("clockMarkers");
+  const pctEl = document.getElementById("clockPct");
+  const pctLabel = document.getElementById("clockPctLabel");
   const rows = sortedTodaySessions();
   const arcParts = [];
   const running = liveRunningMin();
+
+  // Center percentage — target completion
+  const targetMinPct = D.todayTargetHours * 60;
+  const totalLivePct = D.closedTodayHours * 60 + running;
+  if (targetMinPct > 0) {
+    const pct = Math.min(999, Math.round((totalLivePct / targetMinPct) * 100));
+    pctEl.textContent = pct + "%";
+    pctEl.style.color = pct >= 100 ? "var(--pos)" : "var(--fg)";
+    pctLabel.textContent = pct >= 100 ? "target met" : "of target";
+  } else {
+    pctEl.textContent = "—";
+    pctEl.style.color = "var(--fg-muted)";
+    pctLabel.textContent = D.todayIsSunday ? "sunday" : "off day";
+  }
 
   // Session arcs
   for (let i = 0; i < rows.length; i++) {
@@ -1814,7 +1820,7 @@ setInterval(() => {
   }
 }, 1000);
 setInterval(() => {
-  renderClock(); renderHero(); renderChips();
+  renderClock(); renderHero();
   if (dPicker.value === D.today) renderSessions();
 }, 30_000);
 setInterval(refresh, 5 * 60_000);
