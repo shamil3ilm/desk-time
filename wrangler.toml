@@ -28,11 +28,6 @@ migrations_dir = "migrations"
 # catch. That old slot suffered Cloudflare cron drift: a 1h delay meant it
 # fired past midnight IST, by which time the ATS /my-today endpoint had
 # rolled to the next day and yesterday's punch-out was unreachable.
-#
-# Optional 22:30 IST alarm (see src/alarms.ts): to enable, add
-#   "0 17 * * *"
-# to the crons list, `wrangler secret put TELEGRAM_BOT_TOKEN`, and populate
-# users.telegram_chat_id. worker.ts already dispatches this cron pattern.
 # ────────────────────────────────────────────────────────────────
 [triggers]
 crons = [
@@ -44,7 +39,6 @@ crons = [
 #   MASTER_KEY            base64 32-byte, encrypts HR passwords at rest
 #   SESSION_SECRET        HMAC key for signed session cookies
 #   INTERNAL_SYNC_SECRET  random string; auth for /internal/sync-user fan-out
-#   TELEGRAM_BOT_TOKEN    optional, shared bot for alerts
 #
 # Public config:
 [vars]

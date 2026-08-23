@@ -19,7 +19,6 @@ import { apiPunchAdd } from "./routes/api-punch.js";
 import { apiDashboardData } from "./routes/api-dashboard.js";
 import { internalSync } from "./routes/internal-sync.js";
 import { pollQueueConsumer, type PollMessage } from "./queue-consumer.js";
-import { staleSessionAlarm } from "./alarms.js";
 import { redirect } from "./routes/_html.js";
 
 export interface Env {
@@ -117,16 +116,7 @@ export default {
   // Cron Triggers — fan out per user. Dispatch mode chosen at runtime by
   // POLL_DISPATCH_MODE var: "self-fetch" (default, no infra) or "queue"
   // (requires POLL_QUEUE binding + Cloudflare Queue provisioned).
-  //
-  // Two cron patterns configured in wrangler.toml:
-  //   "30 3-16 * * *" — hourly poll (09:00–22:00 IST)
-  //   "0 17 * * *"    — late-evening stale-session alarm (22:30 IST)
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    // Late-evening alarm — separate handler, no fan-out.
-    if (event.cron === "0 17 * * *") {
-      ctx.waitUntil(staleSessionAlarm(env));
-      return;
-    }
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const userIds = await listActiveUserIds(env.DB);
     const mode = (env.POLL_DISPATCH_MODE || "self-fetch").toLowerCase();
     console.log(`cron fired — ${userIds.length} active users, mode=${mode}`);
