@@ -8,6 +8,8 @@ import { findUserById } from "./db/users.js";
 import { listActiveUserIds } from "./db/users.js";
 import { runPoll } from "./ats/poll.js";
 import { getConfig } from "./config.js";
+import { getSessionsBetween } from "./db/sessions.js";
+import { todayISO } from "./report/dates.js";
 import type { UserRow } from "./db/types.js";
 import { signupPage, signupSubmit } from "./routes/signup.js";
 import { loginPage, loginSubmit, logoutSubmit } from "./routes/login.js";
@@ -149,10 +151,24 @@ export default {
           }
           const t0 = Date.now();
           const userIds = await listActiveUserIds(env.DB);
-          console.log(`trigger-all (http) — ${userIds.length} users, in-process`);
           const config = getConfig(env);
+          const todayIso = todayISO(config.tzOffsetMin);
+          // Local (user-TZ) hour, used to decide if we can skip empty users.
+          const nowIstHour = Math.floor(((Date.now() / 60000 + config.tzOffsetMin) % (24 * 60)) / 60);
+          console.log(`trigger-all (http) — ${userIds.length} users, in-process, tz-hour=${nowIstHour}`);
           const results = await Promise.all(userIds.map(async (userId) => {
             try {
+              // Optimization: past noon local time AND user has no sessions on today's
+              // work_date → they're off (leave/Sunday/genuinely not here). Skip the
+              // ATS call; polling adds no data and wastes an ATS/API round-trip.
+              // The user can force a poll any time via the dashboard's "Sync now"
+              // button, which hits /api/sync directly (bypasses this path).
+              if (nowIstHour >= 12) {
+                const rows = await getSessionsBetween(env.DB, userId, todayIso, todayIso);
+                if (rows.length === 0) {
+                  return { user_id: userId, ok: true, skipped: "no punch by noon local" };
+                }
+              }
               const r = await runPoll(env.DB, config, userId, { syncFirst: true });
               return { user_id: userId, ok: r.ok, message: r.message, sessions: r.sessions, synced: r.synced };
             } catch (err) {
