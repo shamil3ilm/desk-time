@@ -66,6 +66,10 @@ export interface DashboardData {
   todayIsLeave: boolean;
   todayNonWorking: boolean;
   todayTargetHours: number;
+  // Standard weekday target (from config.dailyTargetMinutes). Independent of
+  // whether today itself is a working day — use this when comparing past
+  // days to the normal target regardless of today's state.
+  dailyTargetHours: number;
   closedTodayHours: number;
   totalTodayHours: number;
   todayRemainingMin: number;
@@ -379,6 +383,7 @@ export async function buildDashboardData(
     todayIsLeave: nonSundayIsLeave,
     todayNonWorking: nonWorkingDay,
     todayTargetHours: +(todayTarget / 60).toFixed(2),
+    dailyTargetHours: +(config.dailyTargetMinutes / 60).toFixed(2),
     closedTodayHours: +(closedToday / 60).toFixed(2),
     totalTodayHours: +(totalToday / 60).toFixed(2),
     todayRemainingMin: todayRemaining,

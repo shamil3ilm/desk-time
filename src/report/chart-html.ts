@@ -1673,7 +1673,9 @@ function renderSessions() {
     if (s.duration_minutes !== null) total += s.duration_minutes;
     else if (s.punch_out === null && isToday) total += liveRunningMin();
   }
-  const target = dayIsSun ? 0 : (D.todayTargetHours * 60);
+  // Use the STANDARD daily target (from config) for historical days —
+  // not D.todayTargetHours, which is 0 whenever today itself is off.
+  const target = dayIsSun ? 0 : (D.dailyTargetHours * 60);
   const bal = total - target;
   const breakMin = computeBreakMin(rows);
   const parts = [
