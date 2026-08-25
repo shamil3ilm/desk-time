@@ -501,10 +501,17 @@ export function renderDashboardHtml(data: DashboardData): string {
   .heatmap .cell:hover { transform: scale(1.15); outline: 1px solid var(--border-strong); }
   .heatmap .cell.outside { background: transparent; border-color: transparent; cursor: default; color: transparent; }
   .heatmap .cell.outside:hover { transform: none; outline: 0; }
-  .heatmap .cell.today { outline: 2px solid var(--warn); }
-  .heatmap-legend { display: flex; align-items: center; gap: 6px; margin-top: 10px; color: var(--fg-muted); font-size: 11px; }
+  .heatmap .cell.today { outline: 2px solid var(--warn); outline-offset: -1px; }
+  /* Day-type ring around the cell (inset so it doesn't collide with the today outline). */
+  .heatmap .cell.dt-partial { box-shadow: inset 0 0 0 2px var(--partial); color: var(--fg); }
+  .heatmap .cell.dt-half    { box-shadow: inset 0 0 0 2px var(--half); color: var(--fg); }
+  .heatmap-legend { display: flex; align-items: center; gap: 10px; margin-top: 10px; color: var(--fg-muted); font-size: 11px; flex-wrap: wrap; }
   .heatmap-legend .swatches { display: flex; gap: 3px; }
   .heatmap-legend .swatches i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
+  .heatmap-legend .dot { display: inline-block; width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 2px currentColor; margin-right: 3px; vertical-align: middle; }
+  .heatmap-legend .dot.dt-partial { color: var(--partial); }
+  .heatmap-legend .dot.dt-half { color: var(--half); }
+  .heatmap-legend .sep { color: var(--fg-subtle); }
 
   /* Collapsible forms (leave, punch) */
   .form-block { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
@@ -764,6 +771,9 @@ export function renderDashboardHtml(data: DashboardData): string {
           <span>less</span>
           <div class="swatches" id="hmSwatches"></div>
           <span>more</span>
+          <span class="sep">·</span>
+          <span><i class="dot dt-partial"></i>Partial</span>
+          <span><i class="dot dt-half"></i>Half</span>
           <span class="muted" style="margin-left:auto">click a cell to view its sessions</span>
         </div>
       </div>
@@ -1843,7 +1853,8 @@ function renderHeatmap() {
   const m = D.months.find(mm => mm.key === hmSelectEl.value) || D.months[D.months.length - 1];
   document.getElementById("hmLabel").textContent = m.label;
   document.getElementById("hmToday").disabled = hmSelectEl.value === D.months[D.months.length - 1].key;
-  const targetHrs = D.todayTargetHours || 8;
+  // Use STANDARD target — D.todayTargetHours is 0 when today is off, would break the ratio scale.
+  const targetHrs = D.dailyTargetHours || 8;
   const isLight = currentTheme() === "light";
   const scale = isLight
     ? ["#f4f4f5", "#c8ecd0", "#95d9a3", "#5fbf7a", "#22a04a"]
@@ -1869,9 +1880,11 @@ function renderHeatmap() {
       else {
         const bg = colorFor(day.hours);
         const isTd = day.date === D.today ? " today" : "";
+        const dtCls = day.isHalf ? " dt-half" : day.isPartial ? " dt-partial" : "";
         const label = day.date.slice(8);
-        const title = day.date + " · " + fmtHours(day.hours) + (day.isSunday ? " (Sun)" : "");
-        cells.push('<div class="cell'+isTd+'" data-date="'+day.date+'" style="background:'+bg+'" title="'+title+'">'+label+'</div>');
+        const dtNote = day.isHalf ? " · half (0.5d)" : day.isPartial ? " · partial (1d)" : "";
+        const title = day.date + " · " + fmtHours(day.hours) + (day.isSunday ? " (Sun)" : "") + dtNote;
+        cells.push('<div class="cell'+isTd+dtCls+'" data-date="'+day.date+'" style="background:'+bg+'" title="'+title+'">'+label+'</div>');
       }
     }
     rowsHtml.push(cells.join(""));
