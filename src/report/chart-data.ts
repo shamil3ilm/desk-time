@@ -9,12 +9,18 @@ import {
 } from "./dates.js";
 import { getSessionsBetween, getEarliestWorkDate, getOpenSessionOnDate, getLastPoll, getLastSync } from "../db/sessions.js";
 import { listLeaves, isLeave } from "../db/leaves.js";
+import { listDayTypesInRange, type DayType } from "../db/day-types.js";
 
 export interface DayBucket {
   date: string; label: string; hours: number; targetHours: number; isSunday: boolean;
   // true if this is a past weekday with some work but below target (not a leave, not today).
-  // Highlighted in the week chart so short days are visible; still counted in daysCompleted.
+  // Highlighted in the week chart so short days are visible.
   isPartial?: boolean;
+  // true when the user classified this partial day as 'half'.
+  // Charts render this in the half tone (distinct from partial).
+  isHalf?: boolean;
+  // The classify chip in Session flow reads this to render the active state.
+  dayType?: DayType | null;
 }
 export interface WeekPeriod {
   key: string; label: string; start: string; end: string;
@@ -34,7 +40,11 @@ export interface MonthPeriod {
   excusedDates: string[]; unexcusedDates: string[];
   excusedByType: Record<string, string[]>;
   preEmploymentDays: number;
+  // Short-worked days broken down by user classification.
+  // partial = counts as 1 day toward daysCompleted (compensated, default).
+  // half    = counts as 0.5 day toward daysCompleted (approved half-day).
   partialDays: number; partialDates: string[];
+  halfDays: number; halfDates: string[];
   // Hour banking within the month (monthly reset). Positive = surplus, negative = deficit.
   // Formula: total_worked_minutes - (elapsed_workdays - excused_leaves) × dailyTarget
   // Sunday hours count into "worked" with no counterpart in expected (so they add to surplus).
@@ -208,16 +218,21 @@ async function buildMonths(
     const manualLeaves = new Set(manualLeavesList.map((l) => l.date));
     const leaveTypeByDate = new Map(manualLeavesList.map((l) => [l.date, l.type ?? "leave"]));
 
+    // Per-day classification the user has set (partial vs half). Auto = 'partial'.
+    const dayTypes = await listDayTypesInRange(db, userId, start, end);
+
     const effectiveStart = start < employmentStart ? employmentStart : start;
 
-    let daysCompleted = 0;
+    let daysCompleted = 0; // fractional-aware (half-days contribute 0.5)
     let partialDays = 0;
+    let halfDays = 0;
     let excusedLeaves = 0;
     let unexcusedLeaves = 0;
     let sundaysWorked = 0;
     let preEmploymentDays = 0;
     let totalWorkedMin = 0; // for hours-banking calc
     const partialDates: string[] = [];
+    const halfDates: string[] = [];
     const excusedDates: string[] = [];
     const unexcusedDates: string[] = [];
     let d = start;
@@ -225,7 +240,7 @@ async function buildMonths(
       const workedMin = Math.round((dayHoursByDate.get(d) ?? 0) * 60);
       const beforeEmployment = d < employmentStart;
       const isTodayD = d === today;
-      if (!beforeEmployment) totalWorkedMin += workedMin; // includes Sundays + today live
+      if (!beforeEmployment) totalWorkedMin += workedMin;
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
@@ -234,16 +249,20 @@ async function buildMonths(
         daysCompleted++;
       } else if (!isTodayD) {
         // Past weekday under target.
-        // - manual leave → excused (compensates, doesn't count as completed)
-        // - some work (partial) → count as completed AND flag for highlighting
-        // - zero work, no leave → unexcused miss (misses one day of pace)
         if (manualLeaves.has(d)) {
           excusedLeaves++;
           excusedDates.push(d);
         } else if (workedMin > 0) {
-          daysCompleted++;
-          partialDays++;
-          partialDates.push(d);
+          // User can classify: 'half' → 0.5 day, 'partial' (default) → 1 day.
+          if (dayTypes.get(d) === "half") {
+            daysCompleted += 0.5;
+            halfDays++;
+            halfDates.push(d);
+          } else {
+            daysCompleted += 1;
+            partialDays++;
+            partialDates.push(d);
+          }
         } else {
           unexcusedLeaves++;
           unexcusedDates.push(d);
@@ -252,10 +271,14 @@ async function buildMonths(
       d = addDaysISO(d, 1);
     }
 
-    // Flag partial days on the week-level buckets so the chart can render them
-    // in a distinct color without recomputing the classification.
+    // Flag partial/half on week-level buckets so charts can render distinct tones
+    // and Session flow can read dayType off DayBucket directly.
     const partialSet = new Set(partialDates);
-    for (const w of weeks) for (const db2 of w.days) if (partialSet.has(db2.date)) db2.isPartial = true;
+    const halfSet = new Set(halfDates);
+    for (const w of weeks) for (const db2 of w.days) {
+      if (partialSet.has(db2.date)) { db2.isPartial = true; db2.dayType = "partial"; }
+      else if (halfSet.has(db2.date)) { db2.isPartial = true; db2.isHalf = true; db2.dayType = "half"; }
+    }
 
     const daysElapsed = isCurrent
       ? workingDaysBetween(effectiveStart, yesterday < effectiveStart ? effectiveStart : yesterday)
@@ -280,11 +303,14 @@ async function buildMonths(
 
     months.push({
       key, label: monthLabel(key), daysInMonth, sundays, cl, workingDays, targetHours,
-      worked, balance, daysCompleted, daysElapsed, daysBalance,
+      worked, balance,
+      daysCompleted: +daysCompleted.toFixed(1),
+      daysElapsed, daysBalance: +daysBalance.toFixed(1),
       daysRemainingToTarget, workingDaysLeftIncludingToday,
       excusedLeaves, unexcusedLeaves, sundaysWorked, excusedDates, unexcusedDates,
       excusedByType, preEmploymentDays,
       partialDays, partialDates,
+      halfDays, halfDates,
       bankedMinutes,
       weeks,
     });

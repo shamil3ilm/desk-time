@@ -49,6 +49,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     --warn-bg: #241a08;
     --break: #a78bfa;
     --break-dim: rgba(167,139,250,0.35);
+    --partial: #fb923c;
+    --half: #facc15;
     --grid: rgba(255,255,255,0.04);
     --shadow: 0 4px 12px rgba(0,0,0,0.5);
   }
@@ -73,6 +75,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     --warn-bg: #fef9c3;
     --break: #7c3aed;
     --break-dim: rgba(124,58,237,0.28);
+    --partial: #ea580c;
+    --half: #ca8a04;
     --grid: rgba(0,0,0,0.04);
     --shadow: 0 4px 12px rgba(0,0,0,0.06);
   }
@@ -340,6 +344,18 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-item.highlight + .flow-item { border-top-color: transparent; }
   .flow-item[data-sidx] { cursor: default; }
 
+  /* ─── Classify chip (partial vs half) inside Session flow ─── */
+  .dt-classify { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-top: 12px; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 12px; }
+  .dt-classify .dt-label { color: var(--fg-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .dt-classify .dt-hint { color: var(--fg-subtle); font-size: 10px; margin-left: auto; }
+  .dt-chips { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; }
+  .dt-chips button { height: 24px; padding: 0 12px; font-size: 11px; font-weight: 600; color: var(--fg-muted); border-radius: 4px; transition: var(--transition); background: transparent; letter-spacing: 0.02em; }
+  .dt-chips button:hover:not(:disabled) { color: var(--fg); }
+  .dt-chips button:disabled { opacity: 0.55; cursor: wait; }
+  .dt-chips button.active { color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+  .dt-chips button.active[data-type="partial"] { background: color-mix(in srgb, var(--partial) 22%, var(--bg-elev)); color: var(--partial); }
+  .dt-chips button.active[data-type="half"] { background: color-mix(in srgb, var(--half) 22%, var(--bg-elev)); color: var(--half); }
+
   /* ─────── Hero with side-alert on the right ─────── */
   .hero.with-alert { grid-template-columns: auto 1fr auto; }
   .hero-alert { max-width: 280px; background: var(--neg-bg); border: 1px solid var(--neg); border-radius: var(--radius); padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
@@ -441,8 +457,10 @@ export function renderDashboardHtml(data: DashboardData): string {
   .leave-line { color: var(--fg-muted); font-size: 11px; margin: -6px 0 12px; }
   .leave-line b { color: var(--fg); }
   .leave-line .comp { color: var(--pos); }
-  .leave-line .partial { color: var(--warn); }
-  .leave-line .partial b { color: var(--warn); }
+  .leave-line .partial { color: var(--partial); }
+  .leave-line .partial b { color: var(--partial); }
+  .leave-line .half { color: var(--half); }
+  .leave-line .half b { color: var(--half); }
 
   /* Charts */
   .cwrap { position: relative; height: 220px; margin-top: 4px; }
@@ -601,6 +619,7 @@ export function renderDashboardHtml(data: DashboardData): string {
           </div>
         </div>
         <div class="summary" id="sSummary"></div>
+        <div id="classifyPanel" hidden></div>
         <div class="flow-list" id="flowList"></div>
         <details class="form-block">
           <summary>Missed a punch? Add it manually</summary>
@@ -1302,11 +1321,11 @@ function renderWeek() {
   setPbar("wPbar", "wPbarLabels", wPct, wPct >= 1 ? "pos" : "", fmtHours(w.total)+' worked', fmtHours(w.target)+' target');
 
   // Chart — stacked (work + break) with optional last-week ghost
-  const accent = css("--accent"); const warn = css("--warn"); const sunColor = css("--fg-subtle"); const grid = css("--grid"); const tick = css("--fg-muted"); const partial = "#fb923c"; const breakClr = css("--fg-subtle");
+  const accent = css("--accent"); const warn = css("--warn"); const sunColor = css("--fg-subtle"); const grid = css("--grid"); const tick = css("--fg-muted"); const partial = css("--partial"); const half = css("--half"); const breakClr = css("--fg-subtle");
   const workData = w.days.map(d => d.hours);
   const breakData = w.days.map(d => dayBreakHours(d.date));
   const targetData = w.days.map(d => d.targetHours);
-  const barColors = w.days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isPartial ? partial : accent);
+  const barColors = w.days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isHalf ? half : d.isPartial ? partial : accent);
   const datasets = [
     { label: "Worked", data: workData, backgroundColor: barColors, borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, barPercentage: 0.68, stack: "curr", order: 2 },
   ];
@@ -1422,6 +1441,7 @@ function renderMonth() {
     if (m.preEmploymentDays > 0) parts.push('<span class="muted">Pre-employment: <b>'+m.preEmploymentDays+'d</b></span>');
     if (m.excusedLeaves > 0) { const typeParts = Object.entries(m.excusedByType).map(([t, dates]) => t+' <b>'+dates.length+'</b> <span class="muted">('+dates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", ")+')</span>'); parts.push('<span class="comp">Excused: '+typeParts.join(', ')+'</span>'); }
     if (m.partialDays > 0) { const dates = m.partialDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('<span class="partial">Partial: <b>'+m.partialDays+'</b> <span class="muted">('+dates+')</span></span>'); }
+    if (m.halfDays > 0) { const dates = m.halfDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('<span class="half">Half: <b>'+m.halfDays+'</b> <span class="muted">('+dates+') — counted as '+(m.halfDays*0.5)+'d</span></span>'); }
     if (m.unexcusedLeaves > 0) { const dates = m.unexcusedDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('Missed: <b>'+m.unexcusedLeaves+'</b> <span class="muted">('+dates+')</span>'); }
     if (m.sundaysWorked > 0) parts.push('<span class="comp">Sundays worked: <b>'+m.sundaysWorked+'</b></span>');
     leaveEl.innerHTML = parts.join(' <span class="sep">·</span> ');
@@ -1526,7 +1546,7 @@ function renderMonthDays(m) {
     data: {
       labels: days.map(d => +d.date.slice(8)),
       datasets: [
-        { label: "Worked", data: days.map(d => d.date > D.today ? 0 : d.hours), backgroundColor: days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isPartial ? partial : accent), borderRadius: 3, barPercentage: 0.85, categoryPercentage: 0.9 },
+        { label: "Worked", data: days.map(d => d.date > D.today ? 0 : d.hours), backgroundColor: days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isHalf ? half : d.isPartial ? partial : accent), borderRadius: 3, barPercentage: 0.85, categoryPercentage: 0.9 },
         { label: "Target", data: days.map(d => d.targetHours), type: "line", borderColor: targetLine, borderDash: [3,3], pointRadius: 0, borderWidth: 1 },
       ],
     },
@@ -1562,7 +1582,7 @@ function drillIntoWeek(wb) {
   const cfg = {
     type: "bar",
     data: { labels: wb.days.map(d => d.label), datasets: [
-      { label: "Worked", data: wb.days.map(d => d.hours), backgroundColor: wb.days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isPartial ? partial : accent), borderRadius: 4, barPercentage: 0.68 },
+      { label: "Worked", data: wb.days.map(d => d.hours), backgroundColor: wb.days.map(d => d.date === D.today ? warn : d.isSunday ? sunColor : d.isHalf ? half : d.isPartial ? partial : accent), borderRadius: 4, barPercentage: 0.68 },
       { label: "Target", data: wb.days.map(d => d.targetHours), type: "line", borderColor: targetLine, borderDash: [3,3], pointRadius: 0, borderWidth: 1 },
     ]},
     options: {
@@ -1666,6 +1686,50 @@ function renderSessions() {
   document.getElementById("sSummary").innerHTML = parts.join("");
 
   renderFlow(date, rows, isToday);
+  renderClassifyPanel(date, rows, isToday, dayIsSun, breakMin, total, target);
+}
+
+/* Classify UI — shows [Partial · 1d] [Half · 0.5d] for past short-worked days.
+   Qualifies when: past weekday, has work, below target, not a manual leave.
+   The dashboard reflects the change immediately via refresh() after save. */
+function isManualLeaveForDate(date) {
+  // Any month bucket may cover this date; scan for excusedDates.
+  for (const m of D.months) if (m.excusedDates && m.excusedDates.indexOf(date) !== -1) return true;
+  return false;
+}
+function currentDayTypeFor(date) {
+  // Look up the DayBucket for this date in weeks / months data; returns 'partial' | 'half' | null.
+  for (const m of D.months) for (const w of m.weeks) for (const b of w.days) if (b.date === date) return b.dayType ?? null;
+  return null;
+}
+function renderClassifyPanel(date, rows, isToday, dayIsSun, breakMin, totalMin, targetMin) {
+  const el = document.getElementById("classifyPanel");
+  const worked = totalMin;
+  const qualifies = !isToday && !dayIsSun && targetMin > 0 && worked > 0 && worked < targetMin && !isManualLeaveForDate(date);
+  if (!qualifies) { el.hidden = true; el.innerHTML = ""; return; }
+  const active = currentDayTypeFor(date) || "partial";
+  el.hidden = false;
+  el.innerHTML =
+    '<div class="dt-classify">'+
+      '<span class="dt-label">Count this day as</span>'+
+      '<div class="dt-chips">'+
+        '<button data-type="partial" class="'+(active==="partial"?"active":"")+'">Partial · 1d</button>'+
+        '<button data-type="half" class="'+(active==="half"?"active":"")+'">Half · 0.5d</button>'+
+      '</div>'+
+      '<span class="dt-hint">Partial = compensated elsewhere · Half = counted as 0.5</span>'+
+    '</div>';
+  el.querySelectorAll(".dt-chips button").forEach((b) => {
+    b.onclick = async () => {
+      const type = b.getAttribute("data-type");
+      if (b.classList.contains("active")) return;
+      el.querySelectorAll(".dt-chips button").forEach((x) => x.disabled = true);
+      try {
+        const r = await callApi("/api/day-type", { date, type });
+        if (r.ok) { toast("Marked as " + type, "pos", 1800); await refresh(); }
+        else { toast("Failed: " + (r.error || "unknown"), "err", 3000); el.querySelectorAll(".dt-chips button").forEach((x) => x.disabled = false); }
+      } catch (err) { toast("Failed: " + err.message, "err", 3000); el.querySelectorAll(".dt-chips button").forEach((x) => x.disabled = false); }
+    };
+  });
 }
 
 /* Vertical session flow — each session, break gap, and (for today) expected leave time */
