@@ -1970,9 +1970,19 @@ pfDate.value = D.today; pfDate.min = D.earliestDate; pfDate.max = D.today;
 document.getElementById("pfSave").onclick = async () => {
   if (!pfT1.value && !pfT2.value) { toast("Enter at least one time", "err", 2000); return; }
   const times = [pfT1.value, pfT2.value].filter(Boolean).sort();
-  const r = await callApi("/api/punch/add", { date: pfDate.value, from: times[0], to: times[1] });
+  const payload = { date: pfDate.value, from: times[0], to: times[1] };
+  let r = await callApi("/api/punch/add", payload);
+  // Server returns needs_confirmation:true when the new punch would overlap
+  // an already-closed session. Prompt the user before forcing it through.
+  if (!r.ok && r.needs_confirmation) {
+    const confHtml =
+      (r.conflict ? "Falls inside " + (r.conflict.punch_in || "").slice(11,16) + "–" + ((r.conflict.punch_out || "").slice(11,16) || "?") + ".\n\n" : "") +
+      "This time overlaps an existing closed session. Insert anyway?";
+    if (!confirm(confHtml)) { toast("Cancelled", "info", 1500); return; }
+    r = await callApi("/api/punch/add", { ...payload, confirm: true });
+  }
   if (r.ok) { toast("✓ Punch saved · " + times[0] + (times[1] ? " → " + times[1] : " (open)"), "pos"); pfT1.value = ""; pfT2.value = ""; await refresh(); }
-  else toast("Failed: " + r.error, "err", 3500);
+  else toast("Failed: " + (r.error || "unknown"), "err", 3500);
 };
 
 /* Footer */
