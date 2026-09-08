@@ -53,6 +53,9 @@ export interface MonthPeriod {
   weeks: WeekBucket[];
 }
 export interface SessionRowLite {
+  // id is needed so the client can reference specific sessions (delete, update
+  // punch_out). Positive = ATS-originated, negative = manual.
+  id: number;
   punch_in: string; punch_out: string | null; duration_minutes: number | null;
 }
 export interface SessionsIndex {
@@ -327,6 +330,7 @@ async function buildSessionsIndex(db: D1Database, userId: number, today: string,
   const byDate: Record<string, SessionRowLite[]> = {};
   for (const r of rows) {
     (byDate[r.work_date] ||= []).push({
+      id: r.id,
       punch_in: r.punch_in, punch_out: r.punch_out, duration_minutes: r.duration_minutes,
     });
   }
