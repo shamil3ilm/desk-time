@@ -665,6 +665,15 @@ export function renderDashboardHtml(data: DashboardData): string {
   .error-actions .btn { min-width: 100px; height: 32px; padding: 0 16px; font-size: 12px; }
   .error-hint { margin-top: 14px; color: var(--fg-subtle); font-size: 11px; }
 
+  /* Chart-unavailable placeholder — shows inside .cwrap when Chart.js failed to load */
+  .chart-fallback {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; min-height: 220px; padding: 20px;
+    color: var(--fg-muted); font-size: 12px; text-align: center;
+    background: var(--bg); border: 1px dashed var(--border);
+    border-radius: var(--radius-sm); line-height: 1.5;
+  }
+
   /* Offline banner — thin strip along the top when navigator.onLine flips false */
   .offline-banner {
     position: fixed; top: 0; left: 0; right: 0; z-index: 1500;
@@ -1125,6 +1134,26 @@ document.querySelectorAll(".nav-item").forEach((n) => {
 });
 window.addEventListener("hashchange", () => activateView((location.hash || "#today").slice(1)));
 if (location.hash) activateView(location.hash.slice(1));
+
+/* Chart.js availability guard. The library loads from a CDN — if the network
+   drops or the CDN is blocked, the Chart global is undefined and every
+   'new Chart(...)' throws. Instead of taking down the whole dashboard, we
+   render a tiny inline placeholder in the canvas wrapper so the rest of the
+   UI keeps working. */
+function hasChart() { return typeof Chart !== "undefined"; }
+function showChartFallback(canvasId, message) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !canvas.parentElement) return;
+  canvas.style.display = "none";
+  const parent = canvas.parentElement;
+  let box = parent.querySelector(".chart-fallback");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "chart-fallback";
+    parent.appendChild(box);
+  }
+  box.textContent = message || "Chart couldn't be drawn — the visualisation library failed to load. Reload to try again.";
+}
 
 /* Utility formatters */
 function fmtHours(h) { const s = h < 0 ? "-" : ""; const a = Math.abs(h); const hh = Math.floor(a); const mm = Math.round((a - hh) * 60); return s + hh + "h " + String(mm).padStart(2, "0") + "m"; }
@@ -1771,6 +1800,7 @@ function renderWeek() {
       onClick: (evt) => { const points = weekChart.getElementsAtEventForMode(evt, "nearest", { intersect: false }, true); if (points.length) jumpSessionsTo(w.days[points[0].index].date); },
     },
   };
+  if (!hasChart()) { showChartFallback("weekChart"); return; }
   if (weekChart) { weekChart.destroy(); }
   weekChart = new Chart(document.getElementById("weekChart"), cfg);
 }
@@ -1922,6 +1952,7 @@ function renderMonthCumulative(m) {
       },
     },
   };
+  if (!hasChart()) { showChartFallback("monthChart"); return; }
   monthChart = new Chart(document.getElementById("monthChart"), cfg);
 }
 
@@ -1945,6 +1976,7 @@ function renderMonthWeeks(m) {
       onClick: (evt) => { const points = monthChart.getElementsAtEventForMode(evt, "nearest", { intersect: false }, true); if (points.length) drillIntoWeek(m.weeks[points[0].index]); },
     },
   };
+  if (!hasChart()) { showChartFallback("monthChart"); return; }
   monthChart = new Chart(document.getElementById("monthChart"), cfg);
 }
 
@@ -1977,6 +2009,7 @@ function renderMonthDays(m) {
       onClick: (evt) => { const points = monthChart.getElementsAtEventForMode(evt, "nearest", { intersect: false }, true); if (points.length) jumpSessionsTo(days[points[0].index].date); },
     },
   };
+  if (!hasChart()) { showChartFallback("monthChart"); return; }
   monthChart = new Chart(document.getElementById("monthChart"), cfg);
 }
 function drillIntoWeek(wb) {
@@ -2002,6 +2035,7 @@ function drillIntoWeek(wb) {
       onClick: (evt) => { const points = drillChart.getElementsAtEventForMode(evt, "nearest", { intersect: true }, true); if (points.length) jumpSessionsTo(wb.days[points[0].index].date); },
     },
   };
+  if (!hasChart()) { showChartFallback("drillChart"); return; }
   if (drillChart) drillChart.destroy();
   drillChart = new Chart(document.getElementById("drillChart"), cfg);
 }
