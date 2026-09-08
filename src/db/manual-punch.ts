@@ -36,3 +36,21 @@ export async function insertManualSession(
   ).bind(id, userId, punchIn, punchOut, durationMinutes, workDate).run();
   return id;
 }
+
+// Close (or re-order) an existing session in place — used when the user adds
+// a missed punch that pairs with an already-open session on the same day.
+// Any (userId, id) tuple, whether from ATS (positive id) or manual (negative id).
+export async function updateSessionTimes(
+  db: D1Database,
+  userId: number,
+  id: number,
+  punchIn: string,
+  punchOut: string | null,
+  durationMinutes: number | null,
+): Promise<void> {
+  await db.prepare(
+    `UPDATE sessions
+        SET punch_in = ?3, punch_out = ?4, duration_minutes = ?5, updated_at = datetime('now')
+      WHERE user_id = ?1 AND id = ?2`,
+  ).bind(userId, id, punchIn, punchOut, durationMinutes).run();
+}

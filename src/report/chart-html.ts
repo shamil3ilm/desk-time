@@ -1754,20 +1754,42 @@ function renderFlow(date, rows, isToday) {
   const items = [];
   for (let i = 0; i < rows.length; i++) {
     const s = rows[i];
-    const isOpen = s.punch_out === null && isToday;
-    const live = isOpen ? liveRunningMin() : 0;
+    // Three distinct states:
+    //   liveOpen — punch_out=null on TODAY: session is running now (accent + running clock)
+    //   orphaned — punch_out=null on a PAST day: never closed, data-quality issue (err tone)
+    //   closed   — has punch_out (green + duration)
+    const liveOpen = s.punch_out === null && isToday;
+    const orphaned = s.punch_out === null && !isToday;
+    const live = liveOpen ? liveRunningMin() : 0;
     const dur = s.duration_minutes !== null ? s.duration_minutes : live;
-    const dotCls = isOpen ? (live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "work") : "done";
-    const rightCls = isOpen ? (live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "accent") : "";
-    const outClock = isOpen ? '<b class="warn">running</b>' : '<b>'+fmtClock12(s.punch_out)+'</b>';
+    let dotCls, rightCls, caption, outClock, rightHtml;
+    if (liveOpen) {
+      dotCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "work";
+      rightCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "accent";
+      caption = 'SESSION ' + (i + 1) + ' · PUNCHED IN';
+      outClock = '<b class="warn">running</b>';
+      rightHtml = fmtHMcompact(dur);
+    } else if (orphaned) {
+      dotCls = "err";
+      rightCls = "err";
+      caption = 'SESSION ' + (i + 1) + ' · NOT CLOSED';
+      outClock = '<b style="color:var(--neg)">no punch-out</b>';
+      rightHtml = '<span style="color:var(--neg)">—</span>';
+    } else {
+      dotCls = "done";
+      rightCls = "";
+      caption = 'SESSION ' + (i + 1) + ' · COMPLETED';
+      outClock = '<b>' + fmtClock12(s.punch_out) + '</b>';
+      rightHtml = fmtHMcompact(dur);
+    }
     items.push(
       '<div class="flow-item" data-sidx="'+i+'">'+
         '<div class="flow-dot '+dotCls+'"></div>'+
         '<div class="flow-body">'+
-          '<div class="caption">SESSION ' + (i + 1) + (isOpen ? ' · PUNCHED IN' : ' · COMPLETED') + '</div>'+
+          '<div class="caption">' + caption + '</div>'+
           '<div class="sub"><b>'+fmtClock12(s.punch_in)+'</b> → ' + outClock + '</div>'+
         '</div>'+
-        '<div class="flow-right '+rightCls+'">'+fmtHMcompact(dur)+'</div>'+
+        '<div class="flow-right '+rightCls+'">'+rightHtml+'</div>'+
       '</div>'
     );
     // Break gap after this session
