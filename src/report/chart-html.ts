@@ -18,6 +18,46 @@ export function renderDashboardHtml(data: DashboardData): string {
     if (!t || t === "system") { t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; }
     document.documentElement.setAttribute("data-theme", t);
   })();
+  // Early error trapping. This inline script is intentionally tiny so it can't
+  // itself fail to parse. It captures any global error and installs a watchdog:
+  // if the main dashboard script hasn't reported "renderComplete" after 8s,
+  // we assume something is wrong and reveal the error overlay.
+  window.__dtRenderComplete = false;
+  window.__dtLastError = null;
+  window.__dtShowError = function(msg, isCritical) {
+    try {
+      var el = document.getElementById("errorOverlay");
+      if (!el) return;
+      // Only reveal for critical or watchdog-triggered errors. Once shown, stays
+      // shown until reload — don't stack messages.
+      if (!el.hidden) return;
+      if (!isCritical && window.__dtRenderComplete) return;
+      el.hidden = false;
+      var m = document.getElementById("errorMessage");
+      if (m && msg) m.textContent = msg;
+    } catch (e) { /* nothing more we can do */ }
+  };
+  window.addEventListener("error", function(e) {
+    window.__dtLastError = (e && e.message) || "Script error";
+    window.__dtShowError(window.__dtLastError, !window.__dtRenderComplete);
+  });
+  window.addEventListener("unhandledrejection", function(e) {
+    var msg = (e && e.reason && (e.reason.message || String(e.reason))) || "Promise rejection";
+    window.__dtLastError = msg;
+    // Rejections during normal use are fine (toasts handle them). Only escalate
+    // when the initial render hasn't finished — that means the bootstrap failed.
+    if (!window.__dtRenderComplete) window.__dtShowError(msg, true);
+  });
+  setTimeout(function() {
+    if (!window.__dtRenderComplete) {
+      window.__dtShowError(
+        window.__dtLastError
+          ? "The dashboard couldn't finish loading. " + window.__dtLastError
+          : "The dashboard is taking too long to load. Check your connection and reload.",
+        true
+      );
+    }
+  }, 8000);
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
@@ -599,12 +639,69 @@ export function renderDashboardHtml(data: DashboardData): string {
   .toast.fading { opacity: 0; transition: opacity 400ms; }
   @keyframes toast-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
 
+  /* ─── Error overlay (shown by watchdog / global error handler) ─── */
+  .error-overlay {
+    position: fixed; inset: 0; z-index: 3000;
+    background: color-mix(in srgb, var(--bg) 96%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; backdrop-filter: blur(6px);
+    animation: modal-fade-in 200ms ease-out;
+  }
+  .error-panel {
+    max-width: 460px; width: 100%; text-align: center;
+    padding: 32px 28px; background: var(--bg-elev);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .error-icon {
+    width: 56px; height: 56px; margin: 0 auto 14px;
+    border-radius: 50%; background: var(--warn-bg); color: var(--warn);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 700; border: 1px solid var(--warn);
+  }
+  .error-panel h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; color: var(--fg); letter-spacing: -0.01em; }
+  .error-panel p { color: var(--fg-muted); font-size: 13px; line-height: 1.55; margin: 0 0 20px; }
+  .error-actions { display: flex; justify-content: center; gap: 8px; }
+  .error-actions .btn { min-width: 100px; height: 32px; padding: 0 16px; font-size: 12px; }
+  .error-hint { margin-top: 14px; color: var(--fg-subtle); font-size: 11px; }
+
+  /* Offline banner — thin strip along the top when navigator.onLine flips false */
+  .offline-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1500;
+    background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--warn);
+    text-align: center; font-size: 12px; font-weight: 500;
+    padding: 6px 12px; letter-spacing: 0.02em;
+    animation: modal-fade-in 180ms ease-out;
+  }
+
   /* Footer */
   .foot { color: var(--fg-subtle); font-size: 11px; margin-top: 24px; text-align: right; }
 
 </style>
 </head>
 <body>
+<noscript>
+  <div class="error-overlay" style="display:flex">
+    <div class="error-panel">
+      <div class="error-icon">!</div>
+      <h2>JavaScript is required</h2>
+      <p>desk-time needs JavaScript to render the dashboard. Enable it in your browser settings.</p>
+    </div>
+  </div>
+</noscript>
+<div id="offlineBanner" class="offline-banner" hidden>You're offline — showing the last data we have. Some actions won't work until you reconnect.</div>
+<div id="errorOverlay" class="error-overlay" hidden>
+  <div class="error-panel">
+    <div class="error-icon">!</div>
+    <h2>Dashboard didn't load</h2>
+    <p id="errorMessage">Something went wrong. This is usually a network hiccup or a bad deploy.</p>
+    <div class="error-actions">
+      <button class="btn primary" onclick="location.reload()">Reload</button>
+      <a class="btn" href="/health" target="_blank" rel="noopener">Check status</a>
+    </div>
+    <div class="error-hint">If this keeps happening, hard-refresh with Ctrl+Shift+R.</div>
+  </div>
+</div>
 <div class="app">
   <div class="brand">desk-time</div>
   <div class="topbar">
@@ -2235,21 +2332,47 @@ function renderFooter() {
 /* Initial render + tick.
    1s: rotate the clock hand + update the big-time seconds — cheap, no full re-render.
    30s: re-draw the whole clock (new session arcs, ETA marker) + hero + chips + today flow.
-   5min: full API refresh. */
-renderAll();
-setInterval(() => {
-  tickClockHand();
-  if (!D.isPunchedIn) return;
-  const bt = document.getElementById("heroBt");
-  if (bt && document.querySelector(".view.active[data-view=today]")) {
-    bt.innerHTML = bigTimeHtml(liveTodaySec(), { showSec: true });
-  }
-}, 1000);
-setInterval(() => {
-  renderClock(); renderHero(); renderStats();
-  if (dPicker.value === D.today) renderSessions();
-}, 30_000);
-setInterval(refresh, 5 * 60_000);
+   5min: full API refresh.
+   Wrapped in try/catch so a bug here doesn't leave the user stuck with a
+   half-rendered dashboard — the watchdog would catch it anyway, this just
+   surfaces the actual error message sooner. */
+try {
+  renderAll();
+  setInterval(() => {
+    try {
+      tickClockHand();
+      if (!D.isPunchedIn) return;
+      const bt = document.getElementById("heroBt");
+      if (bt && document.querySelector(".view.active[data-view=today]")) {
+        bt.innerHTML = bigTimeHtml(liveTodaySec(), { showSec: true });
+      }
+    } catch (e) { /* transient tick errors don't need to escalate */ }
+  }, 1000);
+  setInterval(() => {
+    try {
+      renderClock(); renderHero(); renderStats();
+      if (dPicker.value === D.today) renderSessions();
+    } catch (e) { console.error("tick render failed:", e); }
+  }, 30_000);
+  setInterval(refresh, 5 * 60_000);
+  window.__dtRenderComplete = true;
+} catch (err) {
+  const msg = err && err.message ? err.message : String(err);
+  console.error("initial render failed:", err);
+  if (window.__dtShowError) window.__dtShowError("Error: " + msg, true);
+}
+
+/* Online/offline banner. Shows the persistent strip when the browser reports
+   offline; hides it when connectivity returns. Doesn't try to hide the whole
+   UI — cached data is still useful to look at. */
+(function wireOffline() {
+  const banner = document.getElementById("offlineBanner");
+  if (!banner) return;
+  const update = () => { banner.hidden = navigator.onLine !== false; };
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+  update();
+})();
 </script>
 </body>
 </html>`;
