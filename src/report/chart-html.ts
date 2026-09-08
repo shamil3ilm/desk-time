@@ -344,6 +344,24 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-item.highlight + .flow-item { border-top-color: transparent; }
   .flow-item[data-sidx] { cursor: default; }
 
+  /* Inline close-time control on orphaned (open) sessions. Primary action is
+     'close at HH:MM', deletion is a small secondary link (rare intent). */
+  .orphan-fix { display: inline-flex; align-items: center; gap: 6px; }
+  .orphan-fix .orphan-time {
+    height: 26px; width: 90px; padding: 0 8px; font-size: 11px; text-align: center;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); font-variant-numeric: tabular-nums;
+  }
+  .orphan-fix .orphan-time:focus-visible { border-color: var(--accent); outline: 0; }
+  .orphan-fix .orphan-del {
+    background: transparent; border: 0; color: var(--fg-subtle);
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0 6px; margin-left: 2px; text-decoration: underline;
+    text-underline-offset: 3px; text-decoration-thickness: 0.5px;
+    text-decoration-color: color-mix(in srgb, var(--fg-subtle) 45%, transparent);
+  }
+  .orphan-fix .orphan-del:hover { color: var(--neg); text-decoration-color: var(--neg); }
+
   /* ─── Classify chip (partial vs half) inside Session flow ─── */
   .dt-classify { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-top: 12px; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 12px; }
   .dt-classify .dt-label { color: var(--fg-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
@@ -1774,7 +1792,15 @@ function renderFlow(date, rows, isToday) {
       rightCls = "err";
       caption = 'SESSION ' + (i + 1) + ' · NOT CLOSED';
       outClock = '<b style="color:var(--neg)">no punch-out</b>';
-      rightHtml = '<button class="btn sm" data-del-sid="'+s.id+'" title="Delete this orphan session" style="height:26px;padding:0 12px;font-size:11px;color:var(--neg);border-color:var(--neg);background:var(--neg-bg)">✕ Delete</button>';
+      // Inline fix — provide a close-time input + primary button so the user
+      // fills the missing punch_out in place. Delete stays as a small secondary
+      // link (rare case: the session shouldn’t exist at all).
+      rightHtml =
+        '<div class="orphan-fix" data-orphan-sid="'+s.id+'">'+
+          '<input type="time" step="60" class="orphan-time" placeholder="close at" />'+
+          '<button class="btn primary sm orphan-close" style="height:26px;padding:0 10px;font-size:11px">Close</button>'+
+          '<button class="orphan-del" title="Delete this session" data-del-sid="'+s.id+'">delete</button>'+
+        '</div>';
     } else {
       dotCls = "done";
       rightCls = "";
@@ -1864,14 +1890,35 @@ function renderFlow(date, rows, isToday) {
     row.addEventListener("mouseenter", () => highlightSession(+row.getAttribute("data-sidx"), true));
     row.addEventListener("mouseleave", () => highlightSession(+row.getAttribute("data-sidx"), false));
   });
-  el.querySelectorAll('[data-del-sid]').forEach((btn) => {
+  // Inline close: user picks a close time and hits Close → PATCH the session in place.
+  el.querySelectorAll('.orphan-fix').forEach((wrap) => {
+    const sid = +wrap.getAttribute('data-orphan-sid');
+    const timeInput = wrap.querySelector('.orphan-time');
+    const closeBtn = wrap.querySelector('.orphan-close');
+    closeBtn.onclick = async () => {
+      const at = timeInput.value;
+      if (!at) { toast('Pick a close time first', 'err', 2000); timeInput.focus(); return; }
+      closeBtn.disabled = true; const original = closeBtn.textContent; closeBtn.textContent = 'closing…';
+      let r = await callApi('/api/punch/update', { session_id: sid, out: at });
+      if (!r.ok && r.needs_confirmation) {
+        const msg = (r.error || 'Overlaps another session') + '. Close anyway?';
+        if (!confirm(msg)) { closeBtn.disabled = false; closeBtn.textContent = original; return; }
+        r = await callApi('/api/punch/update', { session_id: sid, out: at, confirm: true });
+      }
+      if (r.ok) { toast('Session closed at ' + at, 'pos'); await refresh(); }
+      else { toast('Failed: ' + (r.error || 'unknown'), 'err', 3000); closeBtn.disabled = false; closeBtn.textContent = original; }
+    };
+  });
+  // Secondary delete (small, for the rare case where the session really shouldn’t exist).
+  el.querySelectorAll('.orphan-del[data-del-sid]').forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
+      if (!confirm('Delete this session permanently? Session data will be lost.')) return;
       const sid = +btn.getAttribute('data-del-sid');
-      btn.disabled = true; btn.textContent = 'deleting…';
+      btn.disabled = true;
       const r = await callApi('/api/punch/delete', { session_id: sid });
       if (r.ok) { toast('Session deleted', 'pos'); await refresh(); }
-      else { toast('Failed: ' + (r.error || 'unknown'), 'err', 3000); btn.disabled = false; btn.innerHTML = '✕ Delete'; }
+      else { toast('Failed: ' + (r.error || 'unknown'), 'err', 3000); btn.disabled = false; }
     };
   });
 }

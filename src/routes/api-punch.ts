@@ -121,3 +121,52 @@ export async function apiPunchDelete(req: Request, env: Env, user: UserRow): Pro
   if (!deleted) return json({ ok: false, error: "session not found" }, 404);
   return json({ ok: true, message: `Deleted session id=${id}` }, 200);
 }
+
+// Update a specific session's times — safer than the delete+recreate dance.
+// Used for closing an open session in place (set punch_out) or editing an
+// existing one. Overlap with another closed session requires body.confirm=true.
+export async function apiPunchUpdate(req: Request, env: Env, user: UserRow): Promise<Response> {
+  const config = getConfig(env);
+  const body = await req.json().catch(() => ({})) as {
+    session_id?: number; in?: string; out?: string | null; confirm?: boolean;
+  };
+  const id = Number(body.session_id);
+  if (!Number.isFinite(id)) return json({ ok: false, error: "session_id required" }, 400);
+  const sess = await env.DB.prepare(
+    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at
+       FROM sessions WHERE user_id = ?1 AND id = ?2`,
+  ).bind(user.id, id).first<{ id: number; user_id: number; punch_in: string; punch_out: string | null; duration_minutes: number | null; work_date: string; updated_at: string }>();
+  if (!sess) return json({ ok: false, error: "session not found" }, 404);
+  const date = sess.work_date;
+  const makeIso = (hhmm: string): string => `${date}T${hhmm}:00${config.tzOffset}`;
+
+  // Determine new times: fall back to current values if a field wasn't provided.
+  const newIn = body.in ? makeIso(body.in) : sess.punch_in;
+  const newOut = body.out === null ? null : (body.out ? makeIso(body.out) : sess.punch_out);
+  if (body.in && !/^\d{2}:\d{2}$/.test(body.in)) return json({ ok: false, error: "in must be HH:MM" }, 400);
+  if (body.out && !/^\d{2}:\d{2}$/.test(body.out)) return json({ ok: false, error: "out must be HH:MM" }, 400);
+  if (newOut && Date.parse(newOut) <= Date.parse(newIn)) return json({ ok: false, error: "out must be after in" }, 400);
+  const duration = newOut ? Math.round((Date.parse(newOut) - Date.parse(newIn)) / 60_000) : null;
+
+  // Check overlap against every OTHER session on the same date. Same-day only —
+  // we're not spanning midnight.
+  const sameDay = await getSessionsBetween(env.DB, user.id, date, date);
+  const others = sameDay.filter((r) => r.id !== id);
+  const a = Date.parse(newIn), b = newOut ? Date.parse(newOut) : a + 1;
+  const conflict = others.find((r) => {
+    if (r.punch_out === null) return false; // open sessions don't overlap-check
+    const s = Date.parse(r.punch_in), e = Date.parse(r.punch_out);
+    return a < e && b > s;
+  });
+  if (conflict && !body.confirm) {
+    return json({
+      ok: false,
+      needs_confirmation: true,
+      error: `Overlaps closed session ${clockOf(conflict.punch_in)}–${clockOf(conflict.punch_out ?? '')}`,
+      conflict: { id: conflict.id, punch_in: conflict.punch_in, punch_out: conflict.punch_out },
+    }, 409);
+  }
+
+  await updateSessionTimes(env.DB, user.id, id, newIn, newOut, duration);
+  return json({ ok: true, message: `Updated session id=${id}`, data: { id, action: newOut ? "closed" : "updated" } }, 200);
+}
