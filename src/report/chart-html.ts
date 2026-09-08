@@ -547,6 +547,28 @@ export function renderDashboardHtml(data: DashboardData): string {
   .fb-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .fb-hint { color: var(--fg-muted); font-size: 11px; margin-top: 6px; }
 
+  /* ─── Modal (confirm dialogs — replaces native browser confirm/alert) ─── */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: color-mix(in srgb, #000 55%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2000; padding: 20px; animation: modal-fade-in 120ms ease-out;
+    backdrop-filter: blur(2px);
+  }
+  .modal {
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); min-width: 300px; max-width: 460px; width: 100%;
+    padding: 22px 24px 18px; animation: modal-in 160ms cubic-bezier(0.2, 0, 0.1, 1);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .modal-title { font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: -0.01em; }
+  .modal-body { color: var(--fg-muted); font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .modal-actions .btn { min-width: 84px; height: 32px; padding: 0 14px; font-size: 12px; }
+  .btn.primary.danger { background: var(--neg); color: #fff; border-color: var(--neg); }
+  .btn.primary.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--neg) 85%, black); border-color: color-mix(in srgb, var(--neg) 85%, black); }
+  @keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes modal-in { from { opacity: 0; transform: scale(0.96) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
   /* Toast stack */
   .toast-stack { position: fixed; top: 72px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   .toast { background: var(--bg-elev); color: var(--fg); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); font-size: 13px; min-width: 220px; max-width: 380px; box-shadow: var(--shadow); animation: toast-in 180ms ease-out; pointer-events: auto; }
@@ -807,6 +829,53 @@ let D = ${JSON.stringify(data)};
 async function callApi(path, body) {
   const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   return res.json().catch(() => ({ ok: false, error: "invalid JSON" }));
+}
+
+/* Custom confirm modal — Promise<boolean>. Uses textContent for XSS safety.
+   Enter confirms, Esc cancels, click on backdrop cancels. Focus lands on
+   the primary (confirm) button so keyboard flow is: Enter or Esc. */
+function showConfirm(opts) {
+  return new Promise((resolve) => {
+    const o = opts || {};
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    const titleEl = document.createElement("div");
+    titleEl.className = "modal-title";
+    titleEl.textContent = o.title || "Confirm";
+    modal.appendChild(titleEl);
+    if (o.body) {
+      const bodyEl = document.createElement("div");
+      bodyEl.className = "modal-body";
+      bodyEl.textContent = o.body;
+      modal.appendChild(bodyEl);
+    }
+    const actions = document.createElement("div");
+    actions.className = "modal-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn sm";
+    cancelBtn.type = "button";
+    cancelBtn.textContent = o.cancelLabel || "Cancel";
+    actions.appendChild(cancelBtn);
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn primary sm" + (o.danger ? " danger" : "");
+    confirmBtn.type = "button";
+    confirmBtn.textContent = o.confirmLabel || "Confirm";
+    actions.appendChild(confirmBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    const close = (ok) => { document.removeEventListener("keydown", onKey); backdrop.remove(); resolve(ok); };
+    const onKey = (e) => { if (e.key === "Escape") close(false); else if (e.key === "Enter") close(true); };
+    document.addEventListener("keydown", onKey);
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(false); };
+    cancelBtn.onclick = () => close(false);
+    confirmBtn.onclick = () => close(true);
+    setTimeout(() => confirmBtn.focus(), 20);
+  });
 }
 
 function toast(msg, kind = "info", ttlMs = 2500) {
@@ -1901,8 +1970,13 @@ function renderFlow(date, rows, isToday) {
       closeBtn.disabled = true; const original = closeBtn.textContent; closeBtn.textContent = 'closing…';
       let r = await callApi('/api/punch/update', { session_id: sid, out: at });
       if (!r.ok && r.needs_confirmation) {
-        const msg = (r.error || 'Overlaps another session') + '. Close anyway?';
-        if (!confirm(msg)) { closeBtn.disabled = false; closeBtn.textContent = original; return; }
+        const ok = await showConfirm({
+          title: "Overlap detected",
+          body: (r.error || "This time overlaps another session.") + "\n\nClose the session at " + at + " anyway?",
+          confirmLabel: "Close anyway",
+          cancelLabel: "Cancel",
+        });
+        if (!ok) { closeBtn.disabled = false; closeBtn.textContent = original; return; }
         r = await callApi('/api/punch/update', { session_id: sid, out: at, confirm: true });
       }
       if (r.ok) { toast('Session closed at ' + at, 'pos'); await refresh(); }
@@ -1913,7 +1987,14 @@ function renderFlow(date, rows, isToday) {
   el.querySelectorAll('.orphan-del[data-del-sid]').forEach((btn) => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm('Delete this session permanently? Session data will be lost.')) return;
+      const ok = await showConfirm({
+        title: "Delete session?",
+        body: "This session and its data will be permanently removed. You can't undo this.",
+        confirmLabel: "Delete",
+        cancelLabel: "Keep",
+        danger: true,
+      });
+      if (!ok) return;
       const sid = +btn.getAttribute('data-del-sid');
       btn.disabled = true;
       const r = await callApi('/api/punch/delete', { session_id: sid });
@@ -2022,10 +2103,16 @@ document.getElementById("pfSave").onclick = async () => {
   // Server returns needs_confirmation:true when the new punch would overlap
   // an already-closed session. Prompt the user before forcing it through.
   if (!r.ok && r.needs_confirmation) {
-    const confHtml =
-      (r.conflict ? "Falls inside " + (r.conflict.punch_in || "").slice(11,16) + "\\u2013" + ((r.conflict.punch_out || "").slice(11,16) || "?") + ". " : "") +
-      "This time overlaps an existing closed session. Insert anyway?";
-    if (!confirm(confHtml)) { toast("Cancelled", "info", 1500); return; }
+    const range = r.conflict
+      ? (r.conflict.punch_in || "").slice(11,16) + " – " + ((r.conflict.punch_out || "").slice(11,16) || "?")
+      : "";
+    const ok = await showConfirm({
+      title: "Overlaps an existing session",
+      body: (range ? "Falls inside " + range + ".\n\n" : "") + "This time overlaps an existing closed session. Insert anyway?",
+      confirmLabel: "Insert anyway",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) { toast("Cancelled", "info", 1500); return; }
     r = await callApi("/api/punch/add", { ...payload, confirm: true });
   }
   if (r.ok) { toast("✓ Punch saved · " + times[0] + (times[1] ? " → " + times[1] : " (open)"), "pos"); pfT1.value = ""; pfT2.value = ""; await refresh(); }
