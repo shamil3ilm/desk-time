@@ -1774,7 +1774,7 @@ function renderFlow(date, rows, isToday) {
       rightCls = "err";
       caption = 'SESSION ' + (i + 1) + ' · NOT CLOSED';
       outClock = '<b style="color:var(--neg)">no punch-out</b>';
-      rightHtml = '<span style="color:var(--neg)">—</span>';
+      rightHtml = '<button class="btn sm" data-del-sid="'+s.id+'" title="Delete this orphan session" style="height:26px;padding:0 12px;font-size:11px;color:var(--neg);border-color:var(--neg);background:var(--neg-bg)">✕ Delete</button>';
     } else {
       dotCls = "done";
       rightCls = "";
@@ -1863,6 +1863,16 @@ function renderFlow(date, rows, isToday) {
   el.querySelectorAll('.flow-item[data-sidx]').forEach((row) => {
     row.addEventListener("mouseenter", () => highlightSession(+row.getAttribute("data-sidx"), true));
     row.addEventListener("mouseleave", () => highlightSession(+row.getAttribute("data-sidx"), false));
+  });
+  el.querySelectorAll('[data-del-sid]').forEach((btn) => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const sid = +btn.getAttribute('data-del-sid');
+      btn.disabled = true; btn.textContent = 'deleting…';
+      const r = await callApi('/api/punch/delete', { session_id: sid });
+      if (r.ok) { toast('Session deleted', 'pos'); await refresh(); }
+      else { toast('Failed: ' + (r.error || 'unknown'), 'err', 3000); btn.disabled = false; btn.innerHTML = '✕ Delete'; }
+    };
   });
 }
 

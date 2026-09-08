@@ -1,14 +1,25 @@
 import type { Env } from "../worker.js";
 import { getConfig } from "../config.js";
 import type { UserRow } from "../db/types.js";
-import { nextManualSlot, insertManualSession, updateSessionTimes } from "../db/manual-punch.js";
-import { getOpenSessionOnDate } from "../db/sessions.js";
+import { nextManualSlot, insertManualSession, updateSessionTimes, deleteSession } from "../db/manual-punch.js";
+import { getSessionsBetween } from "../db/sessions.js";
 import { todayISO } from "../report/dates.js";
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+/**
+ * Smart insertion: place the new punch at its chronological position and pick
+ * the right action based on the two neighbouring punch events (prev/next).
+ *
+ *   prev = an IN of an OPEN session  → new time is that session's OUT (close it)
+ *   otherwise                        → new time is IN of a NEW open session
+ *
+ * Overlap with an already-closed session is rejected — the user should
+ * provide both times (Case A below) if they mean to insert into a gap
+ * with a specific end.
+ */
 export async function apiPunchAdd(req: Request, env: Env, user: UserRow): Promise<Response> {
   const config = getConfig(env);
   const body = await req.json().catch(() => ({})) as { date?: string; from?: string; to?: string };
@@ -20,32 +31,75 @@ export async function apiPunchAdd(req: Request, env: Env, user: UserRow): Promis
   const [earlier, later] = body.to && body.from > body.to ? [body.to, body.from] : [body.from, body.to];
   const makeIso = (hhmm: string): string => `${date}T${hhmm}:00${config.tzOffset}`;
 
-  // Case A: two times → always a fresh closed session (user is filling a gap).
+  // Case A: two times → a fresh closed session. Still reject overlap with any
+  // existing closed session on the day.
   if (later) {
     const punchIn = makeIso(earlier);
     const punchOut = makeIso(later);
     const duration = Math.round((Date.parse(punchOut) - Date.parse(punchIn)) / 60_000);
     if (duration < 0) return json({ ok: false, error: "to before from after sort — internal error" }, 400);
+    const conflict = await findClosedSessionOverlap(env.DB, user.id, date, punchIn, punchOut);
+    if (conflict) return json({ ok: false, error: `Overlaps closed session ${clockOf(conflict.punch_in)}–${clockOf(conflict.punch_out ?? '')}` }, 409);
     const slot = await nextManualSlot(env.DB, user.id, date);
     const id = await insertManualSession(env.DB, user.id, slot, date, punchIn, punchOut, duration);
     return json({ ok: true, message: `Added session id=${id}`, data: { id, action: "created" } }, 200);
   }
 
-  // Case B: single time. If there's an already-open session on this date whose
-  // punch_in is BEFORE the provided time, close it in place with (existing.in,
-  // provided.time) — sorted. This avoids a stray "open" session appearing when
-  // the user only forgot the punch-out. If provided time is BEFORE the open
-  // session's punch_in, treat it as a genuinely new open session (user is
-  // filling in a missed morning punch).
+  // Case B: single time. Build the chronological event stream, find prev/next
+  // and decide OUT-vs-IN based on prev's kind.
   const providedIso = makeIso(earlier);
-  const open = await getOpenSessionOnDate(env.DB, user.id, date);
-  if (open && Date.parse(providedIso) > Date.parse(open.punch_in)) {
-    const duration = Math.round((Date.parse(providedIso) - Date.parse(open.punch_in)) / 60_000);
-    await updateSessionTimes(env.DB, user.id, open.id, open.punch_in, providedIso, duration);
-    return json({ ok: true, message: `Closed session id=${open.id} at ${earlier}`, data: { id: open.id, action: "closed" } }, 200);
+  const rows = await getSessionsBetween(env.DB, user.id, date, date);
+  type Ev = { time: string; kind: "in" | "out"; sess: typeof rows[number] };
+  const events: Ev[] = [];
+  for (const r of rows) {
+    events.push({ time: r.punch_in, kind: "in", sess: r });
+    if (r.punch_out) events.push({ time: r.punch_out, kind: "out", sess: r });
+  }
+  events.sort((a, b) => a.time.localeCompare(b.time));
+
+  let prev: Ev | null = null, next: Ev | null = null;
+  for (const e of events) { if (e.time < providedIso) prev = e; else if (!next) next = e; }
+
+  // Provided time coincides with an existing punch → reject (avoids zero-length dupes).
+  if (events.some((e) => e.time === providedIso)) {
+    return json({ ok: false, error: `Time ${earlier} already exists on this date` }, 409);
+  }
+  // Inside a closed session: prev is IN, next is OUT of the same session.
+  if (prev && next && prev.kind === "in" && next.kind === "out" && prev.sess.id === next.sess.id && prev.sess.punch_out !== null) {
+    return json({ ok: false, error: `Falls inside closed session ${clockOf(prev.sess.punch_in)}–${clockOf(prev.sess.punch_out)}` }, 409);
   }
 
+  // prev is the IN of an open session and provided time slots after it (but
+  // before the next event, if any) → close that open session in place.
+  if (prev && prev.kind === "in" && prev.sess.punch_out === null) {
+    const duration = Math.round((Date.parse(providedIso) - Date.parse(prev.sess.punch_in)) / 60_000);
+    await updateSessionTimes(env.DB, user.id, prev.sess.id, prev.sess.punch_in, providedIso, duration);
+    return json({ ok: true, message: `Closed session id=${prev.sess.id} at ${earlier}`, data: { id: prev.sess.id, action: "closed" } }, 200);
+  }
+
+  // Otherwise the provided time starts a new open session (missed IN).
   const slot = await nextManualSlot(env.DB, user.id, date);
   const id = await insertManualSession(env.DB, user.id, slot, date, providedIso, null, null);
   return json({ ok: true, message: `Added open session id=${id}`, data: { id, action: "created-open" } }, 200);
+}
+
+async function findClosedSessionOverlap(db: D1Database, userId: number, date: string, punchIn: string, punchOut: string) {
+  const rows = await getSessionsBetween(db, userId, date, date);
+  const a = Date.parse(punchIn), b = Date.parse(punchOut);
+  for (const r of rows) {
+    if (r.punch_out === null) continue;
+    const s = Date.parse(r.punch_in), e = Date.parse(r.punch_out);
+    if (a < e && b > s) return r;
+  }
+  return null;
+}
+function clockOf(iso: string): string { return iso ? iso.slice(11, 16) : "—"; }
+
+export async function apiPunchDelete(req: Request, env: Env, user: UserRow): Promise<Response> {
+  const body = await req.json().catch(() => ({})) as { session_id?: number };
+  const id = Number(body.session_id);
+  if (!Number.isFinite(id)) return json({ ok: false, error: "session_id required" }, 400);
+  const deleted = await deleteSession(env.DB, user.id, id);
+  if (!deleted) return json({ ok: false, error: "session not found" }, 404);
+  return json({ ok: true, message: `Deleted session id=${id}` }, 200);
 }

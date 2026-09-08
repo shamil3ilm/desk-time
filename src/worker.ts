@@ -17,7 +17,7 @@ import { dashboardPage } from "./routes/dashboard.js";
 import { apiSyncSubmit } from "./routes/api-sync.js";
 import { apiFetchSubmit } from "./routes/api-fetch.js";
 import { apiLeaveAdd, apiLeaveRemove } from "./routes/api-leave.js";
-import { apiPunchAdd } from "./routes/api-punch.js";
+import { apiPunchAdd, apiPunchDelete } from "./routes/api-punch.js";
 import { apiDayType } from "./routes/api-day-type.js";
 import { apiDashboardData } from "./routes/api-dashboard.js";
 import { internalSync } from "./routes/internal-sync.js";
@@ -197,6 +197,8 @@ export default {
           return apiLeaveRemove(request, env, user);
         case "POST /api/punch/add":
           return apiPunchAdd(request, env, user);
+        case "POST /api/punch/delete":
+          return apiPunchDelete(request, env, user);
         case "POST /api/day-type":
           return apiDayType(request, env, user);
         case "GET /api/dashboard-data":

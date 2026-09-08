@@ -54,3 +54,14 @@ export async function updateSessionTimes(
       WHERE user_id = ?1 AND id = ?2`,
   ).bind(userId, id, punchIn, punchOut, durationMinutes).run();
 }
+
+// Delete a session by (userId, id). Both positive (ATS) and negative (manual)
+// ids are allowed — ATS deletions will silently return on the next poll if
+// the source still has that punch, which is the desired behaviour (a delete
+// should not un-do a real punch).
+export async function deleteSession(db: D1Database, userId: number, id: number): Promise<boolean> {
+  const res = await db.prepare(
+    `DELETE FROM sessions WHERE user_id = ?1 AND id = ?2`,
+  ).bind(userId, id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
