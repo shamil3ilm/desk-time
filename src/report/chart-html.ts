@@ -2310,7 +2310,7 @@ document.getElementById("pfSave").onclick = async () => {
       : "";
     const ok = await showConfirm({
       title: "Overlaps an existing session",
-      body: (range ? "Falls inside " + range + ".\n\n" : "") + "This time overlaps an existing closed session. Insert anyway?",
+      body: (range ? "Falls inside " + range + ". " : "") + "This time overlaps an existing closed session. Insert anyway?",
       confirmLabel: "Insert anyway",
       cancelLabel: "Cancel",
     });
