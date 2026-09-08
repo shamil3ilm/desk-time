@@ -1976,7 +1976,7 @@ document.getElementById("pfSave").onclick = async () => {
   // an already-closed session. Prompt the user before forcing it through.
   if (!r.ok && r.needs_confirmation) {
     const confHtml =
-      (r.conflict ? "Falls inside " + (r.conflict.punch_in || "").slice(11,16) + "–" + ((r.conflict.punch_out || "").slice(11,16) || "?") + ".\n\n" : "") +
+      (r.conflict ? "Falls inside " + (r.conflict.punch_in || "").slice(11,16) + "\\u2013" + ((r.conflict.punch_out || "").slice(11,16) || "?") + ". " : "") +
       "This time overlaps an existing closed session. Insert anyway?";
     if (!confirm(confHtml)) { toast("Cancelled", "info", 1500); return; }
     r = await callApi("/api/punch/add", { ...payload, confirm: true });
