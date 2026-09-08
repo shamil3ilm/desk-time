@@ -1196,13 +1196,24 @@ function setPbar(pbarId, labelsId, pct, tone, leftLabel, rightLabel) {
 }
 
 /* ─── Today hero ─── */
-function sortedTodaySessions() {
-  return (D.sessions.byDate[D.today] || []).slice().sort((a, b) => a.punch_in.localeCompare(b.punch_in));
+// Selected day = whatever the Sessions picker has. Everything hero-side
+// (clock arcs, big-time, stat strip, alert) follows this so navigating
+// backward in time doesn't leave the hero stuck showing "today".
+function viewDate() { const el = document.getElementById("dPicker"); return (el && el.value) || D.today; }
+function viewIsToday() { return viewDate() === D.today; }
+function sortedSessionsFor(date) {
+  return (D.sessions.byDate[date] || []).slice().sort((a, b) => a.punch_in.localeCompare(b.punch_in));
 }
-function todayBreakMinutes() { return computeBreakMin(sortedTodaySessions()); }
+function sortedTodaySessions() { return sortedSessionsFor(D.today); }
+function breakMinutesFor(date) { return computeBreakMin(sortedSessionsFor(date)); }
+function todayBreakMinutes() { return breakMinutesFor(D.today); }
+function isSundayIso(date) { return new Date(date + "T00:00:00").getDay() === 0; }
+function niceDateShort(iso) { const d = new Date(iso + "T00:00:00"); return dowShort[d.getDay()] + ", " + monShort[d.getMonth()] + " " + d.getDate(); }
 
-function renderHero() {
-  document.getElementById("todayStamp").textContent = niceDate(D.today);
+function renderHero(date) {
+  date = date || viewDate();
+  const isToday = date === D.today;
+  document.getElementById("todayStamp").textContent = isToday ? niceDate(D.today) : "Viewing " + niceDate(date);
   const hero = document.getElementById("hero");
   const pill = document.getElementById("heroPill");
   const pillLabel = document.getElementById("heroPillLabel");
@@ -1210,14 +1221,23 @@ function renderHero() {
   const bt = document.getElementById("heroBt");
   const heroLine = document.getElementById("heroLine");
 
+  hero.classList.remove("with-alert");
+  pill.className = "hero-pill";
+
+  if (isToday) {
+    renderHeroToday(hero, pill, pillLabel, cap, bt, heroLine);
+    return;
+  }
+  renderHeroPast(date, hero, pill, pillLabel, cap, bt, heroLine);
+}
+
+// --- Live "today" hero (current running numbers) -----------------------
+function renderHeroToday(hero, pill, pillLabel, cap, bt, heroLine) {
   const running = liveRunningMin();
   const totalLiveMin = D.closedTodayHours * 60 + running;
   const totalLiveSec = liveTodaySec();
   const targetMin = D.todayTargetHours * 60;
   const remaining = Math.max(0, targetMin - totalLiveMin);
-
-  hero.classList.remove("with-alert");
-  pill.className = "hero-pill";
 
   if (D.todayNonWorking) {
     pill.classList.add("off");
@@ -1267,6 +1287,70 @@ function renderHero() {
   renderHeroAlert(hero);
 }
 
+// --- Historical day hero (no live tick, no cap alert, past totals only) -
+function renderHeroPast(date, hero, pill, pillLabel, cap, bt, heroLine) {
+  const rows = sortedSessionsFor(date);
+  const isSun = isSundayIso(date);
+  const isLeave = isManualLeaveForDate(date);
+  const dayType = currentDayTypeFor(date);
+  let closedMin = 0;
+  for (const s of rows) if (s.duration_minutes !== null) closedMin += s.duration_minutes;
+  const totalMin = closedMin;
+  const totalSec = totalMin * 60;
+  const targetMin = isSun ? 0 : D.dailyTargetHours * 60;
+  const dateLabel = niceDateShort(date);
+
+  // Pill reflects what happened, not what's happening (past = no live states).
+  if (isSun) {
+    pill.classList.add("off");
+    pillLabel.textContent = "Sunday — " + dateLabel;
+  } else if (isLeave) {
+    pill.classList.add("off");
+    pillLabel.textContent = "Leave — " + dateLabel;
+  } else if (totalMin >= targetMin && targetMin > 0) {
+    pill.classList.add("done");
+    pillLabel.textContent = "Target met — " + dateLabel;
+  } else if (dayType === "half") {
+    pill.classList.add("break");
+    pillLabel.textContent = "Half day — " + dateLabel;
+  } else if (totalMin > 0) {
+    pill.classList.add("break");
+    pillLabel.textContent = "Partial day — " + dateLabel;
+  } else {
+    pill.classList.add("idle");
+    pillLabel.textContent = "No punches — " + dateLabel;
+  }
+
+  cap.textContent = isSun ? "WORKED (SUNDAY)" : "WORKED";
+  bt.innerHTML = totalMin > 0
+    ? bigTimeHtml(totalSec, { showSec: false })
+    : '<span class="n">0</span><span class="u">h</span>';
+
+  // One clear line summarising the past day.
+  if (isSun && totalMin > 0) {
+    heroLine.innerHTML = 'Sunday hours count toward the month total.';
+  } else if (isSun) {
+    heroLine.innerHTML = 'No work — weekend.';
+  } else if (isLeave && totalMin > 0) {
+    heroLine.innerHTML = 'Leave day — <b>' + fmtHM(totalMin) + '</b> logged anyway.';
+  } else if (isLeave) {
+    heroLine.innerHTML = 'Manual leave — no target.';
+  } else if (totalMin >= targetMin && targetMin > 0) {
+    heroLine.innerHTML = '<b class="pos">' + fmtHM(totalMin - targetMin) + '</b> banked over the ' + fmtHours(D.dailyTargetHours) + ' target.';
+  } else if (totalMin > 0) {
+    const shortMin = targetMin - totalMin;
+    const halfNote = dayType === "half" ? ' (counted as 0.5 day)' : dayType === "partial" ? ' (counted as 1 day)' : '';
+    heroLine.innerHTML = '<b>' + fmtHM(shortMin) + '</b> short of ' + fmtHours(D.dailyTargetHours) + halfNote + '.';
+  } else {
+    heroLine.innerHTML = 'No punches recorded for this day.';
+  }
+
+  renderHeroPbar(totalMin, targetMin, Math.max(0, targetMin - totalMin));
+  // Session-cap alert is only meaningful for a live session — always hide for past days.
+  const alertBox = document.getElementById("heroAlert");
+  if (alertBox) alertBox.hidden = true;
+}
+
 function renderHeroPbar(totalMin, targetMin, remaining) {
   const wrap = document.getElementById("heroPbarWrap");
   const bar = document.getElementById("heroPbar");
@@ -1291,10 +1375,15 @@ function renderHeroPbar(totalMin, targetMin, remaining) {
 }
 
 /* ─── Stat strip (Punch in / Punch out / Break / Leave-office ETA) ─── */
-function renderStats() {
+function renderStats(date) {
+  date = date || viewDate();
+  const isToday = date === D.today;
   const strip = document.getElementById("statStrip");
-  const rows = sortedTodaySessions();
-  if (D.todayNonWorking && rows.length === 0) { strip.hidden = true; return; }
+  const rows = sortedSessionsFor(date);
+  const isSun = isSundayIso(date);
+  const isLeave = isManualLeaveForDate(date);
+  const nonWorking = isToday ? D.todayNonWorking : (isSun || isLeave);
+  if (nonWorking && rows.length === 0) { strip.hidden = true; return; }
   strip.hidden = false;
 
   const pin = document.getElementById("statPin");
@@ -1312,21 +1401,38 @@ function renderStats() {
     pinFoot.textContent = rows.length === 1 ? 'only punch' : 'first of ' + rows.length;
   } else { pin.textContent = '—'; pinFoot.textContent = 'no punches yet'; }
 
+  const lastRow = rows.length ? rows[rows.length - 1] : null;
+  const stillIn = isToday && D.isPunchedIn;
   if (rows.length === 0) {
     pout.textContent = '—'; poutFoot.textContent = 'no punches yet';
-  } else if (D.isPunchedIn) {
+  } else if (stillIn) {
     pout.innerHTML = 'still <span class="u">in</span>';
     poutFoot.textContent = 'session ' + fmtHM(liveRunningMin());
-  } else {
-    pout.innerHTML = withAmPm(fmtClock12(rows[rows.length - 1].punch_out));
+  } else if (lastRow && lastRow.punch_out) {
+    pout.innerHTML = withAmPm(fmtClock12(lastRow.punch_out));
     poutFoot.textContent = 'last of ' + rows.length;
+  } else {
+    // Historical row with no punch_out (orphaned).
+    pout.innerHTML = '<span style="color:var(--neg)">not closed</span>';
+    poutFoot.textContent = 'session left open';
   }
 
-  const bMin = todayBreakMinutes();
+  const bMin = breakMinutesFor(date);
   const bH = Math.floor(bMin / 60); const bMm = bMin % 60;
   brk.innerHTML = bH + '<span class="u">h</span> ' + String(bMm).padStart(2, '0') + '<span class="u">m</span>';
   brkFoot.textContent = bMin === 0 ? 'no break taken' : rows.length > 1 ? 'across ' + (rows.length - 1) + ' gap' + (rows.length === 2 ? '' : 's') : 'while punched in';
 
+  // ETA card only makes sense for today (projects when you'll finish today's
+  // target). For past days it becomes 'clocked out at HH:MM'.
+  if (!isToday) {
+    if (lastRow && lastRow.punch_out) {
+      eta.innerHTML = withAmPm(fmtClock12(lastRow.punch_out));
+      etaFoot.textContent = 'clocked out';
+    } else {
+      eta.textContent = '—'; etaFoot.textContent = 'no clock-out';
+    }
+    return;
+  }
   const targetMin = D.todayTargetHours * 60;
   const totalMin = D.closedTodayHours * 60 + liveRunningMin();
   if (targetMin === 0) {
@@ -1386,19 +1492,24 @@ function renderClockTicks() {
   el.innerHTML = parts.join('');
   el.dataset.rendered = "1";
 }
-function renderClock() {
+function renderClock(date) {
+  date = date || viewDate();
+  const isToday = date === D.today;
   renderClockTicks();
   const arcs = document.getElementById("clockArcs");
   const markers = document.getElementById("clockMarkers");
   const pctEl = document.getElementById("clockPct");
   const pctLabel = document.getElementById("clockPctLabel");
-  const rows = sortedTodaySessions();
+  const rows = sortedSessionsFor(date);
   const arcParts = [];
-  const running = liveRunningMin();
+  const running = isToday ? liveRunningMin() : 0;
+  const isSun = isSundayIso(date);
 
-  // Center percentage — target completion
-  const targetMinPct = D.todayTargetHours * 60;
-  const totalLivePct = D.closedTodayHours * 60 + running;
+  // Center percentage — target completion for the selected day.
+  const targetMinPct = isToday ? D.todayTargetHours * 60 : (isSun ? 0 : D.dailyTargetHours * 60);
+  let closedForDate = 0;
+  for (const s of rows) if (s.duration_minutes !== null) closedForDate += s.duration_minutes;
+  const totalLivePct = isToday ? (D.closedTodayHours * 60 + running) : closedForDate;
   if (targetMinPct > 0) {
     const pct = Math.min(999, Math.round((totalLivePct / targetMinPct) * 100));
     pctEl.textContent = pct + "%";
@@ -1407,7 +1518,7 @@ function renderClock() {
   } else {
     pctEl.textContent = "—";
     pctEl.style.color = "var(--fg-muted)";
-    pctLabel.textContent = D.todayIsSunday ? "sunday" : "off day";
+    pctLabel.textContent = isSun ? "sunday" : (isManualLeaveForDate(date) ? "leave" : "off day");
   }
 
   // Session + break arcs (break arcs drawn first so session arcs paint over their edges cleanly)
@@ -1457,26 +1568,19 @@ function renderClock() {
     p.addEventListener('mouseleave', () => highlightSession(idx, false));
   });
 
-  // Markers — target met (past or future), current now-hand
+  // Markers — target met (done), pending ETA (only meaningful for today).
   const markerParts = [];
-  const targetMin = D.todayTargetHours * 60;
-  if (targetMin > 0) {
-    // "Where target would be met if you keep working"
-    const totalLive = D.closedTodayHours * 60 + running;
-    if (totalLive >= targetMin) {
-      // Already met — mark the historical moment (approximate: use etaEpochMs which represents projected finish)
-      // Actually, better to mark "now" position with a done marker if punched out
-      if (!D.isPunchedIn && rows.length > 0) {
-        // Marker at last punch_out (target-met moment approximately)
-        const last = rows[rows.length - 1];
-        if (last.punch_out) {
-          const h = isoLocalHour(last.punch_out);
-          const p = polar(CLOCK_CX, CLOCK_CY, CLOCK_R + 12, h * 15);
-          markerParts.push('<circle class="marker done" cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="5"><title>Target reached at ' + fmtClock12(last.punch_out) + '</title></circle>');
-        }
+  if (targetMinPct > 0) {
+    if (totalLivePct >= targetMinPct) {
+      // Mark the moment target was reached (approximated as last punch_out).
+      const last = rows.length > 0 ? rows[rows.length - 1] : null;
+      if (last && last.punch_out) {
+        const h = isoLocalHour(last.punch_out);
+        const p = polar(CLOCK_CX, CLOCK_CY, CLOCK_R + 12, h * 15);
+        markerParts.push('<circle class="marker done" cx="' + p.x.toFixed(2) + '" cy="' + p.y.toFixed(2) + '" r="5"><title>Target reached at ' + fmtClock12(last.punch_out) + '</title></circle>');
       }
-    } else if (D.etaEpochMs) {
-      // Pending — show ETA marker
+    } else if (isToday && D.etaEpochMs) {
+      // Pending ETA marker — only meaningful for today (past days can't project).
       const eta = new Date(D.etaEpochMs);
       const h = eta.getHours() + eta.getMinutes() / 60;
       const p = polar(CLOCK_CX, CLOCK_CY, CLOCK_R + 12, h * 15);
@@ -1485,18 +1589,25 @@ function renderClock() {
   }
   markers.innerHTML = markerParts.join('');
 
-  // Hand — current time
-  const nowH = nowLocalHour();
-  const tip = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 6, nowH * 15);
+  // Hand — current time only. Hidden entirely when viewing a past day so the
+  // clock doesn't imply live activity on a static snapshot.
   const hand = document.getElementById("clockHand");
-  hand.setAttribute("x2", tip.x.toFixed(2));
-  hand.setAttribute("y2", tip.y.toFixed(2));
+  if (isToday) {
+    hand.style.display = "";
+    const nowH = nowLocalHour();
+    const tip = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 6, nowH * 15);
+    hand.setAttribute("x2", tip.x.toFixed(2));
+    hand.setAttribute("y2", tip.y.toFixed(2));
+  } else {
+    hand.style.display = "none";
+  }
 }
 
-/* Update just the clock hand (for the 1s tick — cheaper than re-drawing all arcs) */
+/* Update just the clock hand (for the 1s tick — cheaper than re-drawing all arcs).
+   No-op when a past day is being viewed (no live "now" to draw). */
 function tickClockHand() {
   const hand = document.getElementById("clockHand");
-  if (!hand) return;
+  if (!hand || hand.style.display === "none") return;
   const nowH = nowLocalHour();
   const tip = polar(CLOCK_CX, CLOCK_CY, CLOCK_R - 6, nowH * 15);
   hand.setAttribute("x2", tip.x.toFixed(2));
@@ -1681,7 +1792,7 @@ function jumpSessionsTo(date) {
   if (date > D.today || date < D.earliestDate) return;
   activateView("today");
   dPicker.value = date;
-  renderSessions();
+  reRenderForView();
 }
 
 /* ─── Month ─── */
@@ -2269,11 +2380,18 @@ document.querySelectorAll("#mTabs button").forEach((b) => {
 });
 hmSelectEl.onchange = renderHeatmap;
 document.getElementById("hmToday").onclick = () => { hmSelectEl.value = D.months[D.months.length - 1].key; renderHeatmap(); };
-function shiftDay(days) { const d = new Date(dPicker.value+"T00:00:00"); d.setDate(d.getDate()+days); const iso = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); if (iso > D.today || iso < D.earliestDate) return; dPicker.value = iso; renderSessions(); }
+// Any day-nav change rebuilds hero+clock+stats too so they follow the selection.
+function reRenderForView() {
+  renderSessions();
+  renderHero();
+  renderClock();
+  renderStats();
+}
+function shiftDay(days) { const d = new Date(dPicker.value+"T00:00:00"); d.setDate(d.getDate()+days); const iso = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); if (iso > D.today || iso < D.earliestDate) return; dPicker.value = iso; reRenderForView(); }
 document.getElementById("dPrev").onclick = () => shiftDay(-1);
 document.getElementById("dNext").onclick = () => shiftDay(1);
-document.getElementById("dToday").onclick = () => { dPicker.value = D.today; renderSessions(); };
-dPicker.onchange = renderSessions;
+document.getElementById("dToday").onclick = () => { dPicker.value = D.today; reRenderForView(); };
+dPicker.onchange = reRenderForView;
 
 /* Leave form */
 const lfDate = document.getElementById("lfDate");
@@ -2340,6 +2458,10 @@ try {
   renderAll();
   setInterval(() => {
     try {
+      // Only tick the live clock/big-time when actively viewing TODAY. If the
+      // user has navigated to a past day, the numbers there are static and the
+      // hand is hidden — no work to do.
+      if (!viewIsToday()) return;
       tickClockHand();
       if (!D.isPunchedIn) return;
       const bt = document.getElementById("heroBt");
@@ -2351,7 +2473,7 @@ try {
   setInterval(() => {
     try {
       renderClock(); renderHero(); renderStats();
-      if (dPicker.value === D.today) renderSessions();
+      renderSessions();
     } catch (e) { console.error("tick render failed:", e); }
   }, 30_000);
   setInterval(refresh, 5 * 60_000);
