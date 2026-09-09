@@ -373,8 +373,13 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-item .flow-body .caption { font-size: 11px; }
   .flow-item .flow-body .sub { font-size: 13px; color: var(--fg); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .flow-item .flow-body .sub b { font-weight: 600; }
-  .flow-right { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.2; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-  .flow-right .flow-value { display: inline-flex; align-items: baseline; gap: 4px; }
+  /* Grid keeps every row's value at the same right edge whether a kebab menu
+     is present or not. Column 2 is a fixed 28px slot; when there's no menu
+     (BREAK, TARGET MET, EXPECTED LEAVE TIME rows) it stays empty and reserved
+     so the values line up vertically. */
+  .flow-right { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.2; display: grid; grid-template-columns: 1fr 28px; align-items: center; gap: 8px; text-align: right; }
+  .flow-right .flow-value { grid-column: 1; justify-self: end; display: inline-flex; align-items: baseline; gap: 4px; }
+  .flow-right .row-menu { grid-column: 2; justify-self: center; }
   .flow-right .u { font-size: 12px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
   .flow-right.accent { color: var(--accent); }
   .flow-right.warn { color: var(--warn); }
