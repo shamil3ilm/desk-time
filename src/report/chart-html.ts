@@ -373,7 +373,8 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-item .flow-body .caption { font-size: 11px; }
   .flow-item .flow-body .sub { font-size: 13px; color: var(--fg); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .flow-item .flow-body .sub b { font-weight: 600; }
-  .flow-right { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.2; text-align: right; }
+  .flow-right { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1.2; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .flow-right .flow-value { display: inline-flex; align-items: baseline; gap: 4px; }
   .flow-right .u { font-size: 12px; font-weight: 500; color: var(--fg-muted); margin-left: 1px; }
   .flow-right.accent { color: var(--accent); }
   .flow-right.warn { color: var(--warn); }
@@ -415,7 +416,7 @@ export function renderDashboardHtml(data: DashboardData): string {
   .row-menu-item + .row-menu-item { margin-top: 1px; }
   .row-menu-item .kb { color: var(--fg-subtle); font-size: 10px; margin-left: 8px; float: right; }
 
-  /* Modal input row (used by showPrompt) */
+  /* Modal input row (used by showPrompt / showForm) */
   .modal-input {
     height: 34px; width: 100%; padding: 0 12px; font-size: 14px;
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
@@ -423,6 +424,8 @@ export function renderDashboardHtml(data: DashboardData): string {
     margin-top: 4px;
   }
   .modal-input:focus-visible { border-color: var(--accent); outline: 0; }
+  .modal-fields { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+  .modal-field label { display: block; font-size: 11px; color: var(--fg-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 
   /* ─── Classify chip (partial vs half) inside Session flow ─── */
   .dt-classify { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-top: 12px; background: var(--bg); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 12px; }
@@ -1003,6 +1006,73 @@ function showConfirm(opts) {
     cancelBtn.onclick = () => close(false);
     confirmBtn.onclick = () => close(true);
     setTimeout(() => confirmBtn.focus(), 20);
+  });
+}
+
+/* Multi-input form modal. Fields = array of { name, label, type, value, placeholder }.
+   Same modal shell as showConfirm/showPrompt. Resolves { ok, values: {name: value} }. */
+function showForm(opts) {
+  return new Promise((resolve) => {
+    const o = opts || {};
+    const fields = o.fields || [];
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true");
+    const titleEl = document.createElement("div");
+    titleEl.className = "modal-title"; titleEl.textContent = o.title || "Edit";
+    modal.appendChild(titleEl);
+    if (o.body) {
+      const bodyEl = document.createElement("div");
+      bodyEl.className = "modal-body"; bodyEl.textContent = o.body;
+      modal.appendChild(bodyEl);
+    }
+    const inputs = {};
+    const fieldsWrap = document.createElement("div");
+    fieldsWrap.className = "modal-fields";
+    for (const f of fields) {
+      const row = document.createElement("div");
+      row.className = "modal-field";
+      if (f.label) {
+        const lab = document.createElement("label");
+        lab.textContent = f.label; row.appendChild(lab);
+      }
+      const inp = document.createElement("input");
+      inp.className = "modal-input";
+      inp.type = f.type || "text";
+      if (f.type === "time") inp.step = "60";
+      if (f.value != null) inp.value = f.value;
+      if (f.placeholder) inp.placeholder = f.placeholder;
+      inputs[f.name] = inp;
+      row.appendChild(inp);
+      fieldsWrap.appendChild(row);
+    }
+    modal.appendChild(fieldsWrap);
+    const actions = document.createElement("div");
+    actions.className = "modal-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn sm"; cancelBtn.type = "button";
+    cancelBtn.textContent = o.cancelLabel || "Cancel";
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn primary sm" + (o.danger ? " danger" : "");
+    confirmBtn.type = "button";
+    confirmBtn.textContent = o.confirmLabel || "Save";
+    actions.appendChild(cancelBtn); actions.appendChild(confirmBtn);
+    modal.appendChild(actions);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    const collect = () => { const values = {}; for (const k of Object.keys(inputs)) values[k] = inputs[k].value; return values; };
+    const close = (ok) => { document.removeEventListener("keydown", onKey); backdrop.remove(); resolve({ ok, values: ok ? collect() : {} }); };
+    const onKey = (e) => {
+      if (e.key === "Escape") close(false);
+      else if (e.key === "Enter" && document.activeElement !== cancelBtn) { e.preventDefault(); close(true); }
+    };
+    document.addEventListener("keydown", onKey);
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(false); };
+    cancelBtn.onclick = () => close(false);
+    confirmBtn.onclick = () => close(true);
+    setTimeout(() => { const first = fields[0] && inputs[fields[0].name]; if (first) first.focus(); }, 20);
   });
 }
 
@@ -2196,34 +2266,39 @@ function renderFlow(date, rows, isToday) {
     const orphaned = s.punch_out === null && !isToday;
     const live = liveOpen ? liveRunningMin() : 0;
     const dur = s.duration_minutes !== null ? s.duration_minutes : live;
-    let dotCls, rightCls, caption, outClock, rightHtml;
+    let dotCls, rightCls, caption, outClock, valueHtml;
+    // Menu items differ per state — 'close' for open sessions, 'edit' for closed.
+    // Delete is offered on all so a wrong entry can always be fixed.
+    const menuItems = (s.punch_out === null)
+      ? [{ action: 'close', label: 'Close at time…' }, { action: 'delete', label: 'Delete session', danger: true }]
+      : [{ action: 'edit',  label: 'Edit times…' },   { action: 'delete', label: 'Delete session', danger: true }];
     if (liveOpen) {
       dotCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "work";
       rightCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "accent";
       caption = 'SESSION ' + (i + 1) + ' · PUNCHED IN';
       outClock = '<b class="warn">running</b>';
-      rightHtml = fmtHMcompact(dur);
+      valueHtml = fmtHMcompact(dur);
     } else if (orphaned) {
       dotCls = "err";
       rightCls = "err";
       caption = 'SESSION ' + (i + 1) + ' · NOT CLOSED';
       outClock = '<b style="color:var(--neg)">no punch-out</b>';
-      // Kebab menu — Close (primary, opens time-prompt modal) + Delete (danger, confirm modal).
-      rightHtml =
-        '<div class="row-menu" data-menu-sid="'+s.id+'">'+
-          '<button class="row-menu-btn" title="Actions" aria-label="Session actions">⋮</button>'+
-          '<div class="row-menu-dropdown" role="menu">'+
-            '<button class="row-menu-item" data-action="close" role="menuitem">Close at time…</button>'+
-            '<button class="row-menu-item danger" data-action="delete" role="menuitem">Delete session</button>'+
-          '</div>'+
-        '</div>';
+      valueHtml = '';
     } else {
       dotCls = "done";
       rightCls = "";
       caption = 'SESSION ' + (i + 1) + ' · COMPLETED';
       outClock = '<b>' + fmtClock12(s.punch_out) + '</b>';
-      rightHtml = fmtHMcompact(dur);
+      valueHtml = fmtHMcompact(dur);
     }
+    const rightHtml =
+      (valueHtml ? '<span class="flow-value">' + valueHtml + '</span>' : '') +
+      '<div class="row-menu" data-menu-sid="'+s.id+'">'+
+        '<button class="row-menu-btn" title="Actions" aria-label="Session actions">⋮</button>'+
+        '<div class="row-menu-dropdown" role="menu">'+
+          menuItems.map(m => '<button class="row-menu-item' + (m.danger ? ' danger' : '') + '" data-action="' + m.action + '" role="menuitem">' + m.label + '</button>').join('') +
+        '</div>'+
+      '</div>';
     items.push(
       '<div class="flow-item" data-sidx="'+i+'">'+
         '<div class="flow-dot '+dotCls+'"></div>'+
@@ -2306,49 +2381,90 @@ function renderFlow(date, rows, isToday) {
     row.addEventListener("mouseenter", () => highlightSession(+row.getAttribute("data-sidx"), true));
     row.addEventListener("mouseleave", () => highlightSession(+row.getAttribute("data-sidx"), false));
   });
-  // Row kebab menu — actions on orphaned (open) sessions.
+  // Row kebab menu — actions per session. Session data is captured in the
+  // closure so 'edit' can prefill both time inputs with the current values.
   el.querySelectorAll('.row-menu[data-menu-sid]').forEach((menu) => {
     const sid = +menu.getAttribute('data-menu-sid');
+    const s = rows.find((r) => r.id === sid);
+    if (!s) return;
     bindRowMenu(menu, {
-      close: async () => {
-        const { ok, value } = await showPrompt({
-          title: 'Close session',
-          body: 'Enter the time this session ended.',
-          inputType: 'time',
-          inputPlaceholder: 'HH:MM',
-          confirmLabel: 'Close',
-          cancelLabel: 'Cancel',
-        });
-        if (!ok || !value) return;
-        let r = await callApi('/api/punch/update', { session_id: sid, out: value });
-        if (!r.ok && r.needs_confirmation) {
-          const confirmOverlap = await showConfirm({
-            title: 'Overlap detected',
-            body: (r.error || 'This time overlaps another session.') + ' Close at ' + value + ' anyway?',
-            confirmLabel: 'Close anyway',
-            cancelLabel: 'Cancel',
-          });
-          if (!confirmOverlap) return;
-          r = await callApi('/api/punch/update', { session_id: sid, out: value, confirm: true });
-        }
-        if (r.ok) { toast('Session closed at ' + value, 'pos'); await refresh(); }
-        else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
-      },
-      delete: async () => {
-        const ok = await showConfirm({
-          title: 'Delete session?',
-          body: "This session and its data will be permanently removed. You can't undo this.",
-          confirmLabel: 'Delete',
-          cancelLabel: 'Keep',
-          danger: true,
-        });
-        if (!ok) return;
-        const r = await callApi('/api/punch/delete', { session_id: sid });
-        if (r.ok) { toast('Session deleted', 'pos'); await refresh(); }
-        else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
-      },
+      close:  () => sessionCloseFlow(sid),
+      edit:   () => sessionEditFlow(s),
+      delete: () => sessionDeleteFlow(sid),
     });
   });
+}
+
+/* Session action helpers — shared by any per-row menu. Each drives a modal,
+   hits /api/punch/update or /delete, toasts the result, and refreshes on success. */
+async function sessionCloseFlow(sid) {
+  const { ok, value } = await showPrompt({
+    title: 'Close session',
+    body: 'Enter the time this session ended.',
+    inputType: 'time',
+    inputPlaceholder: 'HH:MM',
+    confirmLabel: 'Close',
+    cancelLabel: 'Cancel',
+  });
+  if (!ok || !value) return;
+  let r = await callApi('/api/punch/update', { session_id: sid, out: value });
+  if (!r.ok && r.needs_confirmation) {
+    const confirmOverlap = await showConfirm({
+      title: 'Overlap detected',
+      body: (r.error || 'This time overlaps another session.') + ' Close at ' + value + ' anyway?',
+      confirmLabel: 'Close anyway',
+      cancelLabel: 'Cancel',
+    });
+    if (!confirmOverlap) return;
+    r = await callApi('/api/punch/update', { session_id: sid, out: value, confirm: true });
+  }
+  if (r.ok) { toast('Session closed at ' + value, 'pos'); await refresh(); }
+  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+}
+
+async function sessionEditFlow(s) {
+  const inVal = (s.punch_in || '').slice(11, 16);
+  const outVal = s.punch_out ? s.punch_out.slice(11, 16) : '';
+  const { ok, values } = await showForm({
+    title: 'Edit session times',
+    body: 'Adjust the punch-in and punch-out to correct a wrong entry. Leave out blank to reopen the session.',
+    fields: [
+      { name: 'in',  label: 'Punch in',  type: 'time', value: inVal },
+      { name: 'out', label: 'Punch out', type: 'time', value: outVal },
+    ],
+    confirmLabel: 'Save',
+    cancelLabel: 'Cancel',
+  });
+  if (!ok) return;
+  if (!values.in) { toast('Punch in is required', 'err', 2500); return; }
+  const body = { session_id: s.id, in: values.in, out: values.out || null };
+  let r = await callApi('/api/punch/update', body);
+  if (!r.ok && r.needs_confirmation) {
+    const confirmOverlap = await showConfirm({
+      title: 'Overlap detected',
+      body: (r.error || 'These times overlap another session.') + ' Save anyway?',
+      confirmLabel: 'Save anyway',
+      cancelLabel: 'Cancel',
+    });
+    if (!confirmOverlap) return;
+    r = await callApi('/api/punch/update', Object.assign({}, body, { confirm: true }));
+  }
+  if (r.ok) { toast('Session updated', 'pos'); await refresh(); }
+  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+}
+
+async function sessionDeleteFlow(sid) {
+  const ok = await showConfirm({
+    title: 'Delete session?',
+    body: "This session and its data will be permanently removed. You can't undo this.",
+    confirmLabel: 'Delete',
+    cancelLabel: 'Keep',
+    danger: true,
+  });
+  if (!ok) return;
+  const r = await callApi('/api/punch/delete', { session_id: sid });
+  if (r.ok) { toast('Session deleted', 'pos'); await refresh(); }
+  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
 }
 
 /* ─── Heatmap ─── */
