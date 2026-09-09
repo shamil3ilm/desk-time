@@ -2327,7 +2327,7 @@ function renderFlow(date, rows, isToday) {
               '<div class="caption break-cap">BREAK</div>'+
               '<div class="sub muted"><b>'+fmtClock12(s.punch_out)+'</b> → <b>'+fmtClock12(next.punch_in)+'</b></div>'+
             '</div>'+
-            '<div class="flow-right" style="color:var(--break)">'+fmtHMcompact(gapMin)+'</div>'+
+            '<div class="flow-right" style="color:var(--break)"><span class="flow-value">'+fmtHMcompact(gapMin)+'</span></div>'+
           '</div>'
         );
       }
@@ -2348,7 +2348,7 @@ function renderFlow(date, rows, isToday) {
               '<div class="caption">TARGET MET</div>'+
               '<div class="sub"><b>'+fmtHM(overMin)+'</b> banked today</div>'+
             '</div>'+
-            '<div class="flow-right done">✓</div>'+
+            '<div class="flow-right done"><span class="flow-value">✓</span></div>'+
           '</div>'
         );
       } else if (D.isPunchedIn && runMin >= D.sessionMaxMin) {
@@ -2361,7 +2361,7 @@ function renderFlow(date, rows, isToday) {
               '<div class="caption">BREAK OVERDUE</div>'+
               '<div class="sub"><b>'+fmtHM(runMin)+'</b> punched in · <b>'+fmtHM(overCap)+'</b> over cap</div>'+
             '</div>'+
-            '<div class="flow-right err">now</div>'+
+            '<div class="flow-right err"><span class="flow-value">now</span></div>'+
           '</div>'
         );
       } else {
@@ -2375,7 +2375,7 @@ function renderFlow(date, rows, isToday) {
               '<div class="caption">EXPECTED LEAVE TIME</div>'+
               '<div class="sub muted"><b>'+fmtHM(remaining)+'</b> still to go</div>'+
             '</div>'+
-            '<div class="flow-right accent">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</div>'+
+            '<div class="flow-right accent"><span class="flow-value">'+fmtTime12(eta.getHours(), eta.getMinutes())+'</span></div>'+
           '</div>'
         );
       }
