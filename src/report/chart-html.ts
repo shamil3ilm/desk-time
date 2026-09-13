@@ -816,7 +816,7 @@ export function renderDashboardHtml(data: DashboardData): string {
               <button id="pfSave" class="btn primary sm">Save punch</button>
               <span class="fb-hint" id="pfMsg"></span>
             </div>
-            <div class="fb-hint">Order doesn't matter — earlier time becomes in, later becomes out. Leave Time 2 blank for an open session.</div>
+            <div class="fb-hint">Order doesn't matter — earlier time becomes in, later becomes out. Enter both for a completed past session; leave Time 2 blank only if the session should stay open (we'll ask before creating a stray open row).</div>
           </div>
         </details>
       </div>
@@ -2590,8 +2590,41 @@ document.getElementById("pfSave").onclick = async () => {
     if (!ok) { toast("Cancelled", "info", 1500); return; }
     r = await callApi("/api/punch/add", { ...payload, confirm: true });
   }
-  if (r.ok) { toast("✓ Punch saved · " + times[0] + (times[1] ? " → " + times[1] : " (open)"), "pos"); pfT1.value = ""; pfT2.value = ""; await refresh(); }
-  else toast("Failed: " + (r.error || "unknown"), "err", 3500);
+  if (!r.ok) { toast("Failed: " + (r.error || "unknown"), "err", 3500); return; }
+
+  toast("✓ Punch saved · " + times[0] + (times[1] ? " → " + times[1] : " (open)"), "pos");
+  pfT1.value = ""; pfT2.value = "";
+
+  // Followup: if a single time was submitted and the server created a new OPEN
+  // session (rather than closing an existing one), the user almost certainly
+  // meant to add a completed past session (e.g. a missed morning punch). Offer
+  // to add a close time right now so they don't have to open the kebab menu.
+  const created = r.data && r.data.action === "created-open";
+  if (created && r.data.id != null) {
+    const { ok: closeOk, value: closeVal } = await showPrompt({
+      title: "Add a close time?",
+      body: "Session added at " + times[0] + ". Enter the time it ended, or Leave open if you're still working.",
+      inputType: "time",
+      inputPlaceholder: "HH:MM",
+      confirmLabel: "Close session",
+      cancelLabel: "Leave open",
+    });
+    if (closeOk && closeVal) {
+      let r2 = await callApi("/api/punch/update", { session_id: r.data.id, out: closeVal });
+      if (!r2.ok && r2.needs_confirmation) {
+        const yes = await showConfirm({
+          title: "Overlap detected",
+          body: (r2.error || "This close time overlaps another session.") + " Close anyway?",
+          confirmLabel: "Close anyway",
+          cancelLabel: "Cancel",
+        });
+        if (yes) r2 = await callApi("/api/punch/update", { session_id: r.data.id, out: closeVal, confirm: true });
+      }
+      if (r2.ok) toast("Session closed at " + closeVal, "pos");
+      else if (r2.error) toast("Close failed: " + r2.error, "err", 3500);
+    }
+  }
+  await refresh();
 };
 
 /* Footer */
