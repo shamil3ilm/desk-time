@@ -67,9 +67,22 @@ export async function apiPunchAdd(req: Request, env: Env, user: UserRow): Promis
   let prev: Ev | null = null, next: Ev | null = null;
   for (const e of events) { if (e.time < providedIso) prev = e; else if (!next) next = e; }
 
-  // Exact-duplicate time on the day → hard reject (no useful semantics for a zero-length punch).
-  if (events.some((e) => e.time === providedIso)) {
-    return json({ ok: false, error: `Time ${earlier} already exists on this date` }, 409);
+  // What will the new time become? If prev is the IN of an open session, this
+  // time is that session's OUT. Otherwise it's the IN of a new open session.
+  // Used for the same-kind duplicate check below.
+  const willBeOut = !!(prev && prev.kind === "in" && prev.sess.punch_out === null);
+
+  // Same-kind duplicate on the day → hard reject. IN colliding with an existing
+  // OUT (or vice versa) is a valid back-to-back adjacency and must be allowed
+  // — that's how 'session ends when the next starts' looks in the event stream.
+  const dupeSameKind = events.find((e) =>
+    e.time === providedIso && ((willBeOut && e.kind === "out") || (!willBeOut && e.kind === "in"))
+  );
+  if (dupeSameKind) {
+    return json({
+      ok: false,
+      error: `Time ${earlier} already exists as a punch-${willBeOut ? "out" : "in"} on this date`,
+    }, 409);
   }
 
   // Falls inside a closed session (prev IN, next OUT of the same closed session).
