@@ -264,10 +264,29 @@ async function buildMonths(
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
-        // Sundays have no target — any work is pure bonus toward the month
-        // total. Not classified as partial/half (that model only applies to
-        // days with a deficit against a target).
-        if (workedMin > 0) sundaysWorked++;
+        // Sundays default to bonus (sundaysWorked +1) since they have no
+        // required target. If the user explicitly classifies a Sunday as
+        // partial or half — same short-day model as weekdays — respect it:
+        //   partial → daysCompleted += 1 (moves from bonus to partial pool)
+        //   half    → daysCompleted += 0.5 (reduces from bonus)
+        //   null    → sundaysWorked++ (bonus default, any amount)
+        // Full-target Sundays (>=8h) always land in sundaysWorked — no need to
+        // classify something that already met the target.
+        if (workedMin > 0) {
+          if (workedMin >= dailyTargetMin) {
+            sundaysWorked++;
+          } else if (dayTypes.get(d) === "half") {
+            daysCompleted += 0.5;
+            halfDays++;
+            halfDates.push(d);
+          } else if (dayTypes.get(d) === "partial") {
+            daysCompleted += 1;
+            partialDays++;
+            partialDates.push(d);
+          } else {
+            sundaysWorked++;
+          }
+        }
       } else if (workedMin >= dailyTargetMin) {
         daysCompleted++;
         if (isTodayD) todayCounted = true;

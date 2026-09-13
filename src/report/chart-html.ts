@@ -2263,10 +2263,12 @@ function renderClassifyPanel(date, rows, isToday, dayIsSun, breakMin, totalMin, 
   const el = document.getElementById("classifyPanel");
   const worked = totalMin;
   // Compare against the STANDARD daily target regardless of whether the viewed
-  // date has target=0 (Sunday / leave day with no target).
+  // date has target=0 (Sunday / leave day with no target). Sundays with
+  // <8h are now classifiable too — default is bonus (sundaysWorked), but the
+  // user can override to partial/half if they want to fold Sunday work into
+  // the same 'covers deficit elsewhere' accounting as weekdays.
   const standardTarget = (D.dailyTargetHours || 8) * 60;
-  // Sundays are pure bonus — no partial/half classification for them.
-  const qualifies = !isToday && !dayIsSun && worked > 0 && worked < standardTarget && !isManualLeaveForDate(date);
+  const qualifies = !isToday && worked > 0 && worked < standardTarget && !isManualLeaveForDate(date);
   if (!qualifies) { el.hidden = true; el.innerHTML = ""; return; }
   const active = currentDayTypeFor(date); // null when unclassified
   const net = weeklyNetMin(date);
