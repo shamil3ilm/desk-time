@@ -385,6 +385,7 @@ export function renderDashboardHtml(data: DashboardData): string {
   .flow-right.warn { color: var(--warn); }
   .flow-right.err { color: var(--neg); }
   .flow-right.done { color: var(--pos); }
+  .flow-right.brk { color: var(--break); }
   .flow-right .foot { display: block; font-size: 10px; font-weight: 500; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
   .flow-item.highlight { background: var(--bg-hover); border-radius: var(--radius-sm); }
   .flow-item.highlight + .flow-item { border-top-color: transparent; }
@@ -2311,12 +2312,14 @@ function renderFlow(date, rows, isToday) {
       valueHtml = '';
     } else if (isExcluded) {
       // Marked as break — recorded as punched-in but user says it's break time.
-      // Visually distinct (purple break tone) so it doesn't look like work.
+      // Purple tone applied to the .flow-value directly (via .brk class) so the
+      // inline-flex gap between number/unit spans is preserved. Wrapping in
+      // another <span> for colour breaks that spacing.
       dotCls = "break";
-      rightCls = "";
+      rightCls = "brk";
       caption = 'SESSION ' + (i + 1) + ' · MARKED AS BREAK';
       outClock = '<b>' + fmtClock12(s.punch_out) + '</b>';
-      valueHtml = '<span style="color:var(--break)">' + fmtHMcompact(dur) + '</span>';
+      valueHtml = fmtHMcompact(dur);
     } else {
       dotCls = "done";
       rightCls = "";
