@@ -2546,40 +2546,24 @@ async function sessionToggleExcludeFlow(s, rowsSnapshot) {
   // Restore direction — nothing else to do.
   if (!r.excluded) { toast('Restored as work', 'pos'); await refresh(); return; }
 
-  toast('Marked as break', 'pos');
-
-  // Followup — if the marked-as-break session had a punch_out and NO later
-  // session already exists after it on the same day, the user very likely
-  // resumed work at the break's end. Offer to add that resumed session in
-  // one prompt (empty out = leave open).
+  // Marking a session as break definitionally means work resumed when the
+  // break ended. Auto-create an open session at break-end so the user doesn't
+  // have to. Skipped only when nothing to anchor to (open session, no
+  // punch_out) or when a session is ALREADY recorded after break-end
+  // (redundant). If the user actually stopped for the day, they can delete
+  // the resumed session from the kebab menu.
   const laterExists = s.punch_out && rowsSnapshot.some((r2) => r2.id !== s.id && r2.punch_in > s.punch_out);
-  if (!s.punch_out || laterExists) { await refresh(); return; }
+  if (!s.punch_out || laterExists) { toast('Marked as break', 'pos'); await refresh(); return; }
 
   const startAt = s.punch_out.slice(11, 16);
-  const { ok, value } = await showPrompt({
-    title: 'Add resumed session?',
-    body: 'Break ends at ' + fmtClock12(s.punch_out) + '. Enter when the resumed session ended, or leave blank to keep it open.',
-    inputType: 'time',
-    inputPlaceholder: 'HH:MM (optional)',
-    confirmLabel: 'Add session',
-    cancelLabel: 'Skip',
-  });
-  if (!ok) { await refresh(); return; }
-
-  const payload = { date: s.work_date, from: startAt, to: value || undefined };
-  let r2 = await callApi('/api/punch/add', payload);
+  let r2 = await callApi('/api/punch/add', { date: s.work_date, from: startAt });
   if (!r2.ok && r2.needs_confirmation) {
-    const yes = await showConfirm({
-      title: 'Overlaps an existing session',
-      body: (r2.error || 'This time overlaps another session.') + ' Insert anyway?',
-      confirmLabel: 'Insert anyway',
-      cancelLabel: 'Cancel',
-    });
-    if (!yes) { await refresh(); return; }
-    r2 = await callApi('/api/punch/add', { ...payload, confirm: true });
+    // Rare — would only happen if the resumed session's start collides with
+    // another session's start (same-kind IN collision at the same instant).
+    r2 = await callApi('/api/punch/add', { date: s.work_date, from: startAt, confirm: true });
   }
-  if (r2.ok) toast('Resumed session added starting ' + startAt, 'pos');
-  else toast('Add failed: ' + (r2.error || 'unknown'), 'err', 3000);
+  if (r2.ok) toast('Marked as break — resumed session opened at ' + fmtClock12(s.punch_out), 'pos');
+  else toast('Marked as break (couldn’t open resumed session: ' + (r2.error || 'unknown') + ')', 'err', 3500);
   await refresh();
 }
 
