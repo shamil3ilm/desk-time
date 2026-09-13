@@ -2119,11 +2119,18 @@ function drillIntoWeek(wb) {
 const dPicker = document.getElementById("dPicker");
 dPicker.value = D.today; dPicker.min = D.earliestDate; dPicker.max = D.today;
 function computeBreakMin(rows) {
-  if (!rows || rows.length < 2) return 0;
+  if (!rows || rows.length === 0) return 0;
   const sorted = [...rows].sort((a, b) => a.punch_in.localeCompare(b.punch_in));
   let breakMin = 0;
+  // Excluded (marked-as-break) sessions count directly toward break time —
+  // the user explicitly said this was break, even though the ATS recorded
+  // them as punched-in periods.
+  for (const s of sorted) {
+    if (s.excluded === 1 && s.duration_minutes !== null) breakMin += s.duration_minutes;
+  }
+  // Real gaps between consecutive sessions (traditional break time).
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i-1];
+    const prev = sorted[i - 1];
     if (!prev.punch_out) continue;
     const gapMs = Date.parse(sorted[i].punch_in) - Date.parse(prev.punch_out);
     if (gapMs > 0) breakMin += Math.round(gapMs / 60000);
@@ -2272,15 +2279,20 @@ function renderFlow(date, rows, isToday) {
     const live = liveOpen ? liveRunningMin() : 0;
     const dur = s.duration_minutes !== null ? s.duration_minutes : live;
     let dotCls, rightCls, caption, outClock, valueHtml;
+    const isExcluded = s.excluded === 1;
     // Menu items differ per state — 'close' for open sessions, 'edit' for closed.
     // Delete is offered on all so a wrong entry can always be fixed.
+    // 'Mark as break' / 'Restore as work' toggles the excluded flag — persists
+    // across ATS re-sync so the user's decision sticks.
     const menuItems = (s.punch_out === null)
       ? [{ action: 'close', label: 'Close at time…' }, { action: 'delete', label: 'Delete session', danger: true }]
-      : [{ action: 'edit',  label: 'Edit times…' },   { action: 'delete', label: 'Delete session', danger: true }];
+      : [
+          { action: 'edit',   label: 'Edit times…' },
+          { action: 'exclude', label: isExcluded ? 'Restore as work' : 'Mark as break' },
+          { action: 'delete', label: 'Delete session', danger: true },
+        ];
     // Contextual 'Merge with next/previous' — only shown when a same-date
-    // session sits exactly at this row's boundary (touching, no gap). Rare
-    // enough that we don't want to prompt automatically, but useful when the
-    // user meant to have one continuous session.
+    // session sits exactly at this row's boundary (touching, no gap).
     const rightNeighbour = s.punch_out ? rows.find((r) => r.id !== s.id && r.punch_in === s.punch_out) : null;
     const leftNeighbour  = s.punch_in  ? rows.find((r) => r.id !== s.id && r.punch_out === s.punch_in)  : null;
     if (rightNeighbour) menuItems.splice(1, 0, { action: 'mergeRight', label: 'Merge with next' });
@@ -2297,6 +2309,14 @@ function renderFlow(date, rows, isToday) {
       caption = 'SESSION ' + (i + 1) + ' · NOT CLOSED';
       outClock = '<b style="color:var(--neg)">no punch-out</b>';
       valueHtml = '';
+    } else if (isExcluded) {
+      // Marked as break — recorded as punched-in but user says it's break time.
+      // Visually distinct (purple break tone) so it doesn't look like work.
+      dotCls = "break";
+      rightCls = "";
+      caption = 'SESSION ' + (i + 1) + ' · MARKED AS BREAK';
+      outClock = '<b>' + fmtClock12(s.punch_out) + '</b>';
+      valueHtml = '<span style="color:var(--break)">' + fmtHMcompact(dur) + '</span>';
     } else {
       dotCls = "done";
       rightCls = "";
@@ -2405,6 +2425,7 @@ function renderFlow(date, rows, isToday) {
       close:      () => sessionCloseFlow(sid),
       edit:       () => sessionEditFlow(s),
       delete:     () => sessionDeleteFlow(sid),
+      exclude:    () => sessionToggleExcludeFlow(sid, s.excluded === 1),
       mergeRight: () => sessionMergeFlow(sid, date),
       mergeLeft:  () => sessionMergeFlow(sid, date),
     });
@@ -2516,6 +2537,16 @@ async function maybeSuggestMerge(sessionId, date) {
   if (!del.ok) { toast("Partial merge — couldn't delete the other row", "err", 3500); await refresh(); return; }
   toast("Sessions merged", "pos");
   await refresh();
+}
+
+async function sessionToggleExcludeFlow(sid, currentlyExcluded) {
+  const r = await callApi('/api/punch/exclude', { session_id: sid });
+  if (r.ok) {
+    toast(r.excluded ? 'Marked as break' : 'Restored as work', 'pos');
+    await refresh();
+  } else {
+    toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+  }
 }
 
 async function sessionDeleteFlow(sid) {

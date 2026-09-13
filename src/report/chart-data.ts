@@ -57,6 +57,8 @@ export interface SessionRowLite {
   // punch_out). Positive = ATS-originated, negative = manual.
   id: number;
   punch_in: string; punch_out: string | null; duration_minutes: number | null;
+  // 1 = user marked this session as a break; renders muted and skipped in totals.
+  excluded?: number;
 }
 export interface SessionsIndex {
   available: string[];
@@ -102,6 +104,10 @@ async function bucketDays(
   const byDay = new Map<string, number>();
   for (const s of sessions) {
     if (s.duration_minutes === null) continue;
+    // Excluded sessions (user marked them as "actually a break") don't count
+    // toward worked minutes but stay in the flow list. Keep in sync with the
+    // client filter in sessions.byDate below.
+    if (s.excluded === 1) continue;
     byDay.set(s.work_date, (byDay.get(s.work_date) ?? 0) + s.duration_minutes);
   }
   const out: DayBucket[] = [];
@@ -332,6 +338,7 @@ async function buildSessionsIndex(db: D1Database, userId: number, today: string,
     (byDate[r.work_date] ||= []).push({
       id: r.id,
       punch_in: r.punch_in, punch_out: r.punch_out, duration_minutes: r.duration_minutes,
+      excluded: r.excluded ?? 0,
     });
   }
   const available = Object.keys(byDate).sort();
@@ -352,7 +359,8 @@ export async function buildDashboardData(
   const runningHours = +(runningNow / 60).toFixed(2);
 
   const todaySessions = await getSessionsBetween(db, userId, today, today);
-  const closedToday = todaySessions.reduce((s, r) => s + (r.duration_minutes ?? 0), 0);
+  // Skip excluded sessions from worked totals — user has marked them as breaks.
+  const closedToday = todaySessions.reduce((s, r) => s + ((r.excluded === 1) ? 0 : (r.duration_minutes ?? 0)), 0);
   const totalToday = closedToday + runningNow;
 
   const [nonSundayIsLeave] = await Promise.all([isLeave(db, userId, today)]);

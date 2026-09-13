@@ -20,6 +20,8 @@ export interface SessionRow {
   duration_minutes: number | null;
   work_date: string;
   updated_at: string;
+  // 1 = user marked this session as a break; excluded from worked totals.
+  excluded?: number;
 }
 
 export interface LeaveRow {

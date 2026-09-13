@@ -1,7 +1,7 @@
 import type { Env } from "../worker.js";
 import { getConfig } from "../config.js";
 import type { UserRow } from "../db/types.js";
-import { nextManualSlot, insertManualSession, updateSessionTimes, deleteSession } from "../db/manual-punch.js";
+import { nextManualSlot, insertManualSession, updateSessionTimes, deleteSession, toggleSessionExcluded } from "../db/manual-punch.js";
 import { getSessionsBetween } from "../db/sessions.js";
 import { todayISO } from "../report/dates.js";
 
@@ -113,6 +113,17 @@ async function findClosedSessionOverlap(db: D1Database, userId: number, date: st
 }
 function clockOf(iso: string): string { return iso ? iso.slice(11, 16) : "—"; }
 
+// Toggle the "excluded" (mark-as-break) flag. Toggling flips it in place —
+// the client passes only session_id and receives the new state.
+export async function apiPunchExclude(req: Request, env: Env, user: UserRow): Promise<Response> {
+  const body = await req.json().catch(() => ({})) as { session_id?: number };
+  const id = Number(body.session_id);
+  if (!Number.isFinite(id)) return json({ ok: false, error: "session_id required" }, 400);
+  const result = await toggleSessionExcluded(env.DB, user.id, id);
+  if (!result) return json({ ok: false, error: "session not found" }, 404);
+  return json({ ok: true, excluded: result.excluded === 1 });
+}
+
 export async function apiPunchDelete(req: Request, env: Env, user: UserRow): Promise<Response> {
   const body = await req.json().catch(() => ({})) as { session_id?: number };
   const id = Number(body.session_id);
@@ -133,9 +144,9 @@ export async function apiPunchUpdate(req: Request, env: Env, user: UserRow): Pro
   const id = Number(body.session_id);
   if (!Number.isFinite(id)) return json({ ok: false, error: "session_id required" }, 400);
   const sess = await env.DB.prepare(
-    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at
+    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at, excluded
        FROM sessions WHERE user_id = ?1 AND id = ?2`,
-  ).bind(user.id, id).first<{ id: number; user_id: number; punch_in: string; punch_out: string | null; duration_minutes: number | null; work_date: string; updated_at: string }>();
+  ).bind(user.id, id).first<{ id: number; user_id: number; punch_in: string; punch_out: string | null; duration_minutes: number | null; work_date: string; updated_at: string; excluded: number }>();
   if (!sess) return json({ ok: false, error: "session not found" }, 404);
   const date = sess.work_date;
   const makeIso = (hhmm: string): string => `${date}T${hhmm}:00${config.tzOffset}`;

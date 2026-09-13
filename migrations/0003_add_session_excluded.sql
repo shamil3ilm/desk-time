@@ -1,0 +1,12 @@
+-- Per-session flag: user can mark a session as "actually a break" so it stops
+-- counting toward worked-minute totals while remaining visible in the flow.
+--
+-- Use case: ATS records a period as a punched-in session (30 min or so) that
+-- the user actually spent on a break. The ATS is the source of truth for
+-- punch times and will re-emit the row on the next sync, so deleting is only
+-- a temporary fix. This flag is app-local; the upsertSessions ON CONFLICT
+-- clause only touches punch_in/out/duration/work_date/updated_at, so the
+-- flag survives every ATS sync.
+--
+-- 0 = counts as work (default). 1 = excluded from worked totals.
+ALTER TABLE sessions ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0;

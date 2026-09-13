@@ -77,7 +77,7 @@ export async function getLastSync(db: D1Database, userId: number): Promise<PollL
 
 export async function getOpenSessionOnDate(db: D1Database, userId: number, workDate: string): Promise<SessionRow | null> {
   const row = await db.prepare(
-    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at
+    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at, excluded
        FROM sessions
        WHERE user_id = ?1 AND work_date = ?2 AND punch_out IS NULL
        ORDER BY punch_in DESC LIMIT 1`,
@@ -92,7 +92,7 @@ export async function getSessionsBetween(
   to: string,
 ): Promise<SessionRow[]> {
   const res = await db.prepare(
-    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at
+    `SELECT id, user_id, punch_in, punch_out, duration_minutes, work_date, updated_at, excluded
        FROM sessions
        WHERE user_id = ?1 AND work_date >= ?2 AND work_date <= ?3
        ORDER BY punch_in ASC`,

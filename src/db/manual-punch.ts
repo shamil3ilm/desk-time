@@ -65,3 +65,22 @@ export async function deleteSession(db: D1Database, userId: number, id: number):
   ).bind(userId, id).run();
   return (res.meta?.changes ?? 0) > 0;
 }
+
+// Toggle the sessions.excluded flag. Returns the new value, or null if the
+// row was not found. The flag survives ATS re-sync because upsertSessions
+// doesn't touch this column in its ON CONFLICT clause.
+export async function toggleSessionExcluded(
+  db: D1Database,
+  userId: number,
+  id: number,
+): Promise<{ excluded: 0 | 1 } | null> {
+  const cur = await db.prepare(
+    `SELECT excluded FROM sessions WHERE user_id = ?1 AND id = ?2`,
+  ).bind(userId, id).first<{ excluded: number | null }>();
+  if (!cur) return null;
+  const next: 0 | 1 = cur.excluded ? 0 : 1;
+  await db.prepare(
+    `UPDATE sessions SET excluded = ?3, updated_at = datetime('now') WHERE user_id = ?1 AND id = ?2`,
+  ).bind(userId, id, next).run();
+  return { excluded: next };
+}
