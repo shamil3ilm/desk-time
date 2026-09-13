@@ -260,7 +260,25 @@ async function buildMonths(
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
-        if (workedMin > 0 && !isTodayD) sundaysWorked++;
+        // Sunday work — full-target Sundays are 'bonus' (sundaysWorked), short
+        // Sundays classify as partial for parity with weekdays. Both paths
+        // contribute equally to daysBalance since Sundays never appear in
+        // daysElapsed (workingDaysBetween excludes them).
+        // Today Sunday is included too — same 'any day with work counts' rule
+        // that applies to today weekdays.
+        if (workedMin > 0) {
+          if (workedMin >= dailyTargetMin) {
+            sundaysWorked++;
+          } else if (dayTypes.get(d) === "half") {
+            daysCompleted += 0.5;
+            halfDays++;
+            halfDates.push(d);
+          } else {
+            daysCompleted += 1;
+            partialDays++;
+            partialDates.push(d);
+          }
+        }
       } else if (workedMin >= dailyTargetMin) {
         daysCompleted++;
         if (isTodayD) todayCounted = true;

@@ -740,7 +740,7 @@ export function renderDashboardHtml(data: DashboardData): string {
     <!-- ─────────── Today ─────────── -->
     <section class="view active" data-view="today">
       <div class="view-head">
-        <div class="view-title"><h1>Today</h1><span class="sub" id="todayStamp"></span></div>
+        <div class="view-title"><h1 id="todayTitle">Today</h1><span class="sub" id="todayStamp"></span></div>
       </div>
 
       <section class="hero" id="hero">
@@ -1318,7 +1318,10 @@ function niceDateShort(iso) { const d = new Date(iso + "T00:00:00"); return dowS
 function renderHero(date) {
   date = date || viewDate();
   const isToday = date === D.today;
-  document.getElementById("todayStamp").textContent = isToday ? niceDate(D.today) : "Viewing " + niceDate(date);
+  // Section title reflects the day being viewed. When today: 'Today · Sun, Sep 8'.
+  // When past: the date itself, so the h1 doesn't lie about what's on screen.
+  document.getElementById("todayTitle").textContent = isToday ? "Today" : niceDate(date);
+  document.getElementById("todayStamp").textContent = isToday ? niceDate(D.today) : "Viewing past day · today is " + niceDate(D.today);
   const hero = document.getElementById("hero");
   const pill = document.getElementById("heroPill");
   const pillLabel = document.getElementById("heroPillLabel");
@@ -2234,7 +2237,11 @@ function currentDayTypeFor(date) {
 function renderClassifyPanel(date, rows, isToday, dayIsSun, breakMin, totalMin, targetMin) {
   const el = document.getElementById("classifyPanel");
   const worked = totalMin;
-  const qualifies = !isToday && !dayIsSun && targetMin > 0 && worked > 0 && worked < targetMin && !isManualLeaveForDate(date);
+  // Compare against the STANDARD daily target regardless of whether the viewed
+  // date has target=0 (Sunday / leave). Sundays with short work can now be
+  // classified as partial/half so they show alongside weekday partials.
+  const standardTarget = (D.dailyTargetHours || 8) * 60;
+  const qualifies = !isToday && worked > 0 && worked < standardTarget && !isManualLeaveForDate(date);
   if (!qualifies) { el.hidden = true; el.innerHTML = ""; return; }
   const active = currentDayTypeFor(date) || "partial";
   el.hidden = false;
