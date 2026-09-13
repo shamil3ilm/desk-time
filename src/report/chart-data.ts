@@ -244,6 +244,9 @@ async function buildMonths(
     let sundaysWorked = 0;
     let preEmploymentDays = 0;
     let totalWorkedMin = 0; // for hours-banking calc
+    // Track whether today itself contributes to daysCompleted so we can also
+    // include today in daysElapsed (keeps daysBalance coherent).
+    let todayCounted = false;
     const partialDates: string[] = [];
     const halfDates: string[] = [];
     const excusedDates: string[] = [];
@@ -260,22 +263,32 @@ async function buildMonths(
         if (workedMin > 0 && !isTodayD) sundaysWorked++;
       } else if (workedMin >= dailyTargetMin) {
         daysCompleted++;
+        if (isTodayD) todayCounted = true;
+      } else if (workedMin > 0) {
+        // Any weekday (past OR today) with some work but under target counts
+        // as partial for pace math — otherwise short days silently disappear
+        // until they're either full or missed. Leave-day classification takes
+        // priority: excused leaves aren't 'partial' even if hours were logged.
+        if (manualLeaves.has(d) && !isTodayD) {
+          excusedLeaves++;
+          excusedDates.push(d);
+        } else if (dayTypes.get(d) === "half") {
+          daysCompleted += 0.5;
+          halfDays++;
+          halfDates.push(d);
+          if (isTodayD) todayCounted = true;
+        } else {
+          daysCompleted += 1;
+          partialDays++;
+          partialDates.push(d);
+          if (isTodayD) todayCounted = true;
+        }
       } else if (!isTodayD) {
-        // Past weekday under target.
+        // Past weekday, zero work — either excused leave or unexcused miss.
+        // Today with zero work stays uncounted (day still in progress).
         if (manualLeaves.has(d)) {
           excusedLeaves++;
           excusedDates.push(d);
-        } else if (workedMin > 0) {
-          // User can classify: 'half' → 0.5 day, 'partial' (default) → 1 day.
-          if (dayTypes.get(d) === "half") {
-            daysCompleted += 0.5;
-            halfDays++;
-            halfDates.push(d);
-          } else {
-            daysCompleted += 1;
-            partialDays++;
-            partialDates.push(d);
-          }
         } else {
           unexcusedLeaves++;
           unexcusedDates.push(d);
@@ -293,13 +306,18 @@ async function buildMonths(
       else if (halfSet.has(db2.date)) { db2.isPartial = true; db2.isHalf = true; db2.dayType = "half"; }
     }
 
+    // Include today in elapsed only when today actually contributed to
+    // daysCompleted — keeps daysBalance coherent (both sides move together).
+    const elapsedEnd = isCurrent && todayCounted ? today : yesterday;
     const daysElapsed = isCurrent
-      ? workingDaysBetween(effectiveStart, yesterday < effectiveStart ? effectiveStart : yesterday)
+      ? workingDaysBetween(effectiveStart, elapsedEnd < effectiveStart ? effectiveStart : elapsedEnd)
       : Math.max(0, workingDays - preEmploymentDays);
 
     const daysBalance = (daysCompleted + sundaysWorked) - daysElapsed;
     const daysRemainingToTarget = Math.max(0, workingDays - preEmploymentDays - daysCompleted);
-    const workingDaysLeftIncludingToday = isCurrent ? workingDaysBetween(today, end) : 0;
+    // "Left" excludes today once today is counted (it's done, not left).
+    const leftFrom = isCurrent && todayCounted ? addDaysISO(today, 1) : today;
+    const workingDaysLeftIncludingToday = isCurrent && leftFrom <= end ? workingDaysBetween(leftFrom, end) : 0;
 
     // Hour banking: what you owe or have banked, monthly reset.
     // Expected = elapsed weekdays minus excused leaves (excused don't require hours).
