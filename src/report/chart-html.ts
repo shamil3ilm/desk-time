@@ -444,6 +444,9 @@ export function renderDashboardHtml(data: DashboardData): string {
   .dt-chips button.active { color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
   .dt-chips button.active[data-type="partial"] { background: color-mix(in srgb, var(--partial) 22%, var(--bg-elev)); color: var(--partial); }
   .dt-chips button.active[data-type="half"] { background: color-mix(in srgb, var(--half) 22%, var(--bg-elev)); color: var(--half); }
+  /* Suggested — shown as a soft outline while nothing is selected yet, hinting
+     at the recommended pick based on weekly net. */
+  .dt-chips button.suggested { outline: 1px dashed var(--border-strong); outline-offset: -1px; color: var(--fg); }
 
   /* ─────── Hero with side-alert on the right ─────── */
   .hero.with-alert { grid-template-columns: auto 1fr auto; }
@@ -1952,7 +1955,7 @@ function renderMonth() {
 
   // Leaves
   const leaveEl = document.getElementById("mLeaves");
-  const any = m.excusedLeaves + m.unexcusedLeaves + m.sundaysWorked + m.preEmploymentDays + (m.partialDays || 0);
+  const any = m.excusedLeaves + m.unexcusedLeaves + m.sundaysWorked + m.preEmploymentDays + (m.partialDays || 0) + (m.unclassifiedDays || 0);
   if (any === 0) { leaveEl.textContent = ""; leaveEl.hidden = true; }
   else {
     leaveEl.hidden = false;
@@ -1961,6 +1964,7 @@ function renderMonth() {
     if (m.excusedLeaves > 0) { const typeParts = Object.entries(m.excusedByType).map(([t, dates]) => t+' <b>'+dates.length+'</b> <span class="muted">('+dates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", ")+')</span>'); parts.push('<span class="comp">Excused: '+typeParts.join(', ')+'</span>'); }
     if (m.partialDays > 0) { const dates = m.partialDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('<span class="partial">Partial: <b>'+m.partialDays+'</b> <span class="muted">('+dates+')</span></span>'); }
     if (m.halfDays > 0) { const dates = m.halfDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('<span class="half">Half: <b>'+m.halfDays+'</b> <span class="muted">('+dates+') — counted as '+(m.halfDays*0.5)+'d</span></span>'); }
+    if (m.unclassifiedDays > 0) { const dates = m.unclassifiedDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('<span style="color:var(--warn)">Needs classify: <b>'+m.unclassifiedDays+'</b> <span class="muted">('+dates+') — 0d credit until picked</span></span>'); }
     if (m.unexcusedLeaves > 0) { const dates = m.unexcusedDates.map(d => monShort[+d.slice(5,7)-1]+" "+ +d.slice(8)).join(", "); parts.push('Missed: <b>'+m.unexcusedLeaves+'</b> <span class="muted">('+dates+')</span>'); }
     if (m.sundaysWorked > 0) parts.push('<span class="comp">Sundays worked: <b>'+m.sundaysWorked+'</b></span>');
     leaveEl.innerHTML = parts.join(' <span class="sep">·</span> ');
@@ -2234,25 +2238,56 @@ function currentDayTypeFor(date) {
   for (const m of D.months) for (const w of m.weeks) for (const b of w.days) if (b.date === date) return b.dayType ?? null;
   return null;
 }
+function weeklyNetMin(date) {
+  // Sum of (worked - target) minutes for every day in the same week as the
+  // given date. Positive = surplus (deficit here can be compensated);
+  // negative = deficit (short-day credit is not covered by extra hours in
+  // this week). Only sums up to and including the given date so future days
+  // don't count.
+  const target = (D.dailyTargetHours || 8) * 60;
+  for (const w of D.weeks) {
+    if (w.start > date || w.end < date) continue;
+    let net = 0;
+    for (const d of w.days) {
+      if (d.date > date) continue;
+      const wmin = Math.round(d.hours * 60);
+      const tmin = d.isSunday ? 0 : target;
+      net += wmin - tmin;
+    }
+    return net;
+  }
+  return 0;
+}
+
 function renderClassifyPanel(date, rows, isToday, dayIsSun, breakMin, totalMin, targetMin) {
   const el = document.getElementById("classifyPanel");
   const worked = totalMin;
   // Compare against the STANDARD daily target regardless of whether the viewed
-  // date has target=0 (Sunday / leave). Sundays with short work can now be
-  // classified as partial/half so they show alongside weekday partials.
+  // date has target=0 (Sunday / leave day with no target).
   const standardTarget = (D.dailyTargetHours || 8) * 60;
-  const qualifies = !isToday && worked > 0 && worked < standardTarget && !isManualLeaveForDate(date);
+  // Sundays are pure bonus — no partial/half classification for them.
+  const qualifies = !isToday && !dayIsSun && worked > 0 && worked < standardTarget && !isManualLeaveForDate(date);
   if (!qualifies) { el.hidden = true; el.innerHTML = ""; return; }
-  const active = currentDayTypeFor(date) || "partial";
+  const active = currentDayTypeFor(date); // null when unclassified
+  const net = weeklyNetMin(date);
+  // Compensation hint — suggests which classification fits based on weekly net.
+  const hintHtml = net >= 0
+    ? '<span class="dt-hint"><b class="pos">Week net +' + fmtHM(net) + '</b> — Partial (1d) covers the deficit</span>'
+    : '<span class="dt-hint"><b class="neg">Week net ' + fmtHM(net) + '</b> — Half (0.5d) reflects the uncompensated gap</span>';
+  const suggestion = net >= 0 ? "partial" : "half";
+  const unclassifiedNote = active == null
+    ? '<span class="dt-hint" style="color:var(--warn)">Not classified — pick one to give credit</span>'
+    : '';
   el.hidden = false;
   el.innerHTML =
     '<div class="dt-classify">'+
       '<span class="dt-label">Count this day as</span>'+
       '<div class="dt-chips">'+
-        '<button data-type="partial" class="'+(active==="partial"?"active":"")+'">Partial · 1d</button>'+
-        '<button data-type="half" class="'+(active==="half"?"active":"")+'">Half · 0.5d</button>'+
+        '<button data-type="partial" class="'+(active==="partial"?"active":"")+(active==null&&suggestion==="partial"?" suggested":"")+'">Partial · 1d</button>'+
+        '<button data-type="half" class="'+(active==="half"?"active":"")+(active==null&&suggestion==="half"?" suggested":"")+'">Half · 0.5d</button>'+
       '</div>'+
-      '<span class="dt-hint">Partial = compensated elsewhere · Half = counted as 0.5</span>'+
+      hintHtml +
+      unclassifiedNote +
     '</div>';
   el.querySelectorAll(".dt-chips button").forEach((b) => {
     b.onclick = async () => {

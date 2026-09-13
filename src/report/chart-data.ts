@@ -41,10 +41,12 @@ export interface MonthPeriod {
   excusedByType: Record<string, string[]>;
   preEmploymentDays: number;
   // Short-worked days broken down by user classification.
-  // partial = counts as 1 day toward daysCompleted (compensated, default).
-  // half    = counts as 0.5 day toward daysCompleted (approved half-day).
+  // partial      = user-classified compensated day, 1 day credit.
+  // half         = user-classified half day, 0.5 day credit.
+  // unclassified = short-worked but user hasn't picked yet → 0 credit.
   partialDays: number; partialDates: string[];
   halfDays: number; halfDates: string[];
+  unclassifiedDays: number; unclassifiedDates: string[];
   // Hour banking within the month (monthly reset). Positive = surplus, negative = deficit.
   // Formula: total_worked_minutes - (elapsed_workdays - excused_leaves) × dailyTarget
   // Sunday hours count into "worked" with no counterpart in expected (so they add to surplus).
@@ -244,6 +246,7 @@ async function buildMonths(
     let sundaysWorked = 0;
     let preEmploymentDays = 0;
     let totalWorkedMin = 0; // for hours-banking calc
+    let unclassifiedDays = 0;
     // Track whether today itself contributes to daysCompleted so we can also
     // include today in daysElapsed (keeps daysBalance coherent).
     let todayCounted = false;
@@ -251,6 +254,7 @@ async function buildMonths(
     const halfDates: string[] = [];
     const excusedDates: string[] = [];
     const unexcusedDates: string[] = [];
+    const unclassifiedDates: string[] = [];
     let d = start;
     while (d <= cursorEnd) {
       const workedMin = Math.round((dayHoursByDate.get(d) ?? 0) * 60);
@@ -260,33 +264,19 @@ async function buildMonths(
       if (beforeEmployment) {
         if (!isSunday(d)) preEmploymentDays++;
       } else if (isSunday(d)) {
-        // Sunday work — full-target Sundays are 'bonus' (sundaysWorked), short
-        // Sundays classify as partial for parity with weekdays. Both paths
-        // contribute equally to daysBalance since Sundays never appear in
-        // daysElapsed (workingDaysBetween excludes them).
-        // Today Sunday is included too — same 'any day with work counts' rule
-        // that applies to today weekdays.
-        if (workedMin > 0) {
-          if (workedMin >= dailyTargetMin) {
-            sundaysWorked++;
-          } else if (dayTypes.get(d) === "half") {
-            daysCompleted += 0.5;
-            halfDays++;
-            halfDates.push(d);
-          } else {
-            daysCompleted += 1;
-            partialDays++;
-            partialDates.push(d);
-          }
-        }
+        // Sundays have no target — any work is pure bonus toward the month
+        // total. Not classified as partial/half (that model only applies to
+        // days with a deficit against a target).
+        if (workedMin > 0) sundaysWorked++;
       } else if (workedMin >= dailyTargetMin) {
         daysCompleted++;
         if (isTodayD) todayCounted = true;
       } else if (workedMin > 0) {
-        // Any weekday (past OR today) with some work but under target counts
-        // as partial for pace math — otherwise short days silently disappear
-        // until they're either full or missed. Leave-day classification takes
-        // priority: excused leaves aren't 'partial' even if hours were logged.
+        // Short weekday. Classification is USER-driven — the model of 'partial
+        // = deficit covered by extra hours elsewhere' can't be inferred
+        // automatically (hourly users might not want any partial credit at
+        // all). Unclassified short days get 0 credit; user picks partial (1d)
+        // or half (0.5d) from the classify chip.
         if (manualLeaves.has(d) && !isTodayD) {
           excusedLeaves++;
           excusedDates.push(d);
@@ -295,11 +285,15 @@ async function buildMonths(
           halfDays++;
           halfDates.push(d);
           if (isTodayD) todayCounted = true;
-        } else {
+        } else if (dayTypes.get(d) === "partial") {
           daysCompleted += 1;
           partialDays++;
           partialDates.push(d);
           if (isTodayD) todayCounted = true;
+        } else {
+          // Unclassified short weekday. Tracked so the UI can prompt the user.
+          unclassifiedDays++;
+          unclassifiedDates.push(d);
         }
       } else if (!isTodayD) {
         // Past weekday, zero work — either excused leave or unexcused miss.
@@ -360,6 +354,7 @@ async function buildMonths(
       excusedByType, preEmploymentDays,
       partialDays, partialDates,
       halfDays, halfDates,
+      unclassifiedDays, unclassifiedDates,
       bankedMinutes,
       weeks,
     });
