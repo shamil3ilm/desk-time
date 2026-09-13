@@ -2423,8 +2423,11 @@ async function sessionCloseFlow(sid) {
     if (!confirmOverlap) return;
     r = await callApi('/api/punch/update', { session_id: sid, out: value, confirm: true });
   }
-  if (r.ok) { toast('Session closed at ' + value, 'pos'); await refresh(); }
-  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+  if (r.ok) {
+    toast('Session closed at ' + value, 'pos');
+    await refresh();
+    await maybeSuggestMerge(sid, viewDate());
+  } else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
 }
 
 async function sessionEditFlow(s) {
@@ -2454,8 +2457,58 @@ async function sessionEditFlow(s) {
     if (!confirmOverlap) return;
     r = await callApi('/api/punch/update', Object.assign({}, body, { confirm: true }));
   }
-  if (r.ok) { toast('Session updated', 'pos'); await refresh(); }
-  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+  if (r.ok) {
+    toast('Session updated', 'pos');
+    await refresh();
+    await maybeSuggestMerge(s.id, s.work_date || viewDate());
+  } else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+}
+
+/* After any change that could create a touching neighbour (close, edit, or the
+   add-punch followup), see if two sessions on the same date now sit exactly
+   back-to-back (self.out === other.in OR self.in === other.out). If so, offer
+   to merge them into a single session so the flow doesn't show two rows for
+   what's really one continuous work period the user split by mistake.
+   Assumes D is fresh — caller must have awaited refresh() before invoking. */
+async function maybeSuggestMerge(sessionId, date) {
+  const sessions = (D.sessions.byDate[date] || []).slice();
+  const self = sessions.find((s) => s.id === sessionId);
+  if (!self) return;
+  const others = sessions.filter((s) => s.id !== sessionId);
+  const rightNeighbour = self.punch_out ? others.find((o) => o.punch_in === self.punch_out) : null;
+  const leftNeighbour  = self.punch_in  ? others.find((o) => o.punch_out === self.punch_in)  : null;
+  const other = rightNeighbour || leftNeighbour;
+  if (!other) return;
+
+  // Combined times — use the earliest IN and latest OUT of the two rows.
+  // If either side is still open (no punch_out), the merged session inherits
+  // that openness — but merging into an open session is rare, so we require
+  // both sides closed for now.
+  if (!self.punch_out || !other.punch_out) return;
+  const combinedIn  = self.punch_in  < other.punch_in  ? self.punch_in  : other.punch_in;
+  const combinedOut = self.punch_out > other.punch_out ? self.punch_out : other.punch_out;
+  const touchAt = rightNeighbour ? self.punch_out : self.punch_in;
+
+  const ok = await showConfirm({
+    title: "Merge adjacent sessions?",
+    body: "These two sessions touch at " + fmtClock12(touchAt) + ". Merge them into one session " + fmtClock12(combinedIn) + " → " + fmtClock12(combinedOut) + "?",
+    confirmLabel: "Merge",
+    cancelLabel: "Keep separate",
+  });
+  if (!ok) return;
+
+  // Two-step merge: extend self to cover the combined range, then delete other.
+  const upd = await callApi("/api/punch/update", {
+    session_id: self.id,
+    in: combinedIn.slice(11, 16),
+    out: combinedOut.slice(11, 16),
+    confirm: true,
+  });
+  if (!upd.ok) { toast("Merge failed: " + (upd.error || "unknown"), "err", 3000); return; }
+  const del = await callApi("/api/punch/delete", { session_id: other.id });
+  if (!del.ok) { toast("Partial merge — couldn't delete the other row", "err", 3500); await refresh(); return; }
+  toast("Sessions merged", "pos");
+  await refresh();
 }
 
 async function sessionDeleteFlow(sid) {
@@ -2625,6 +2678,11 @@ document.getElementById("pfSave").onclick = async () => {
     }
   }
   await refresh();
+  // If the new session (whether closed via followup or the initial two-time
+  // save) now touches an existing session at the same timestamp, offer merge.
+  if (r.data && r.data.id != null) {
+    await maybeSuggestMerge(r.data.id, payload.date);
+  }
 };
 
 /* Footer */
