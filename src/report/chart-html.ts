@@ -2277,6 +2277,14 @@ function renderFlow(date, rows, isToday) {
     const menuItems = (s.punch_out === null)
       ? [{ action: 'close', label: 'Close at time…' }, { action: 'delete', label: 'Delete session', danger: true }]
       : [{ action: 'edit',  label: 'Edit times…' },   { action: 'delete', label: 'Delete session', danger: true }];
+    // Contextual 'Merge with next/previous' — only shown when a same-date
+    // session sits exactly at this row's boundary (touching, no gap). Rare
+    // enough that we don't want to prompt automatically, but useful when the
+    // user meant to have one continuous session.
+    const rightNeighbour = s.punch_out ? rows.find((r) => r.id !== s.id && r.punch_in === s.punch_out) : null;
+    const leftNeighbour  = s.punch_in  ? rows.find((r) => r.id !== s.id && r.punch_out === s.punch_in)  : null;
+    if (rightNeighbour) menuItems.splice(1, 0, { action: 'mergeRight', label: 'Merge with next' });
+    else if (leftNeighbour) menuItems.splice(1, 0, { action: 'mergeLeft', label: 'Merge with previous' });
     if (liveOpen) {
       dotCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "work";
       rightCls = live >= D.sessionMaxMin ? "err" : live >= D.sessionAlertMin ? "warn" : "accent";
@@ -2387,15 +2395,18 @@ function renderFlow(date, rows, isToday) {
     row.addEventListener("mouseleave", () => highlightSession(+row.getAttribute("data-sidx"), false));
   });
   // Row kebab menu — actions per session. Session data is captured in the
-  // closure so 'edit' can prefill both time inputs with the current values.
+  // closure so 'edit' can prefill both time inputs with the current values,
+  // and merge can resolve the touching neighbour from the fresh rows list.
   el.querySelectorAll('.row-menu[data-menu-sid]').forEach((menu) => {
     const sid = +menu.getAttribute('data-menu-sid');
     const s = rows.find((r) => r.id === sid);
     if (!s) return;
     bindRowMenu(menu, {
-      close:  () => sessionCloseFlow(sid),
-      edit:   () => sessionEditFlow(s),
-      delete: () => sessionDeleteFlow(sid),
+      close:      () => sessionCloseFlow(sid),
+      edit:       () => sessionEditFlow(s),
+      delete:     () => sessionDeleteFlow(sid),
+      mergeRight: () => sessionMergeFlow(sid, date),
+      mergeLeft:  () => sessionMergeFlow(sid, date),
     });
   });
 }
@@ -2423,11 +2434,8 @@ async function sessionCloseFlow(sid) {
     if (!confirmOverlap) return;
     r = await callApi('/api/punch/update', { session_id: sid, out: value, confirm: true });
   }
-  if (r.ok) {
-    toast('Session closed at ' + value, 'pos');
-    await refresh();
-    await maybeSuggestMerge(sid, viewDate());
-  } else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+  if (r.ok) { toast('Session closed at ' + value, 'pos'); await refresh(); }
+  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
 }
 
 async function sessionEditFlow(s) {
@@ -2457,19 +2465,18 @@ async function sessionEditFlow(s) {
     if (!confirmOverlap) return;
     r = await callApi('/api/punch/update', Object.assign({}, body, { confirm: true }));
   }
-  if (r.ok) {
-    toast('Session updated', 'pos');
-    await refresh();
-    await maybeSuggestMerge(s.id, s.work_date || viewDate());
-  } else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
+  if (r.ok) { toast('Session updated', 'pos'); await refresh(); }
+  else toast('Failed: ' + (r.error || 'unknown'), 'err', 3000);
 }
 
-/* After any change that could create a touching neighbour (close, edit, or the
-   add-punch followup), see if two sessions on the same date now sit exactly
-   back-to-back (self.out === other.in OR self.in === other.out). If so, offer
-   to merge them into a single session so the flow doesn't show two rows for
-   what's really one continuous work period the user split by mistake.
-   Assumes D is fresh — caller must have awaited refresh() before invoking. */
+/* Explicit merge flow — invoked from the kebab 'Merge with next/previous'
+   menu item. Resolves the touching neighbour on the same date, prompts to
+   confirm the combined range, then extends this session and deletes the
+   other. User-opt-in only — never prompts automatically. */
+async function sessionMergeFlow(sessionId, date) {
+  await maybeSuggestMerge(sessionId, date);
+}
+
 async function maybeSuggestMerge(sessionId, date) {
   const sessions = (D.sessions.byDate[date] || []).slice();
   const self = sessions.find((s) => s.id === sessionId);
@@ -2678,11 +2685,6 @@ document.getElementById("pfSave").onclick = async () => {
     }
   }
   await refresh();
-  // If the new session (whether closed via followup or the initial two-time
-  // save) now touches an existing session at the same timestamp, offer merge.
-  if (r.data && r.data.id != null) {
-    await maybeSuggestMerge(r.data.id, payload.date);
-  }
 };
 
 /* Footer */
